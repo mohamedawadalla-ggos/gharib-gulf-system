@@ -1,0 +1,1 @@
+console.log("Raw Supabase response:", { assets, count, error });
