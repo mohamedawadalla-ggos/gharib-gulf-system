@@ -1,5 +1,4 @@
-// app/dashboard/_components/station-chart.tsx
-"use client";
+'use client';
 
 import {
   BarChart,
@@ -10,7 +9,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from "recharts";
+} from 'recharts';
 
 interface StationBreakdown {
   station_code: string;
@@ -20,48 +19,58 @@ interface StationBreakdown {
   critical: number;
 }
 
-// ✅ CORRECT: Property name + type
 interface StationChartProps {
   data: StationBreakdown[];
 }
 
 export function StationChart({ data }: StationChartProps) {
-  const chartData = data.map(station => ({
-    name: station.station_code,
-    Total: station.total_assets,
-    Overdue: station.overdue,
-    Critical: station.critical,
-  }));
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-[400px] flex items-center justify-center text-navy-400">
+        No station data available
+      </div>
+    );
+  }
 
   return (
-    // ✅ CRITICAL: Parent container must have explicit height
-    <div className="card bg-navy-800 p-4 rounded-lg border border-navy-700 h-[400px]">
-      <h3 className="text-lg font-semibold text-navy-50 mb-4">Assets by Station</h3>
-      {/* ✅ ResponsiveContainer with explicit width/height */}
-      <ResponsiveContainer width="100%" height="100%" minHeight={300}>
-        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+    <div className="w-full h-[400px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-          <XAxis 
-            dataKey="name" 
-            stroke="#94a3b8"
+          <XAxis
+            dataKey="station_code"
             angle={-45}
             textAnchor="end"
             height={60}
-            interval={0}
+            tick={{ fill: '#94a3b8', fontSize: 12 }}
           />
-          <YAxis stroke="#94a3b8" />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: "#1e293b", 
-              border: "1px solid #475569",
-              borderRadius: "8px",
+          <YAxis tick={{ fill: '#94a3b8' }} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: '8px',
+              color: '#f1f5f9',
             }}
-            labelStyle={{ color: "#f1f5f9" }}
+            labelStyle={{ color: '#f1f5f9' }}
           />
-          <Legend wrapperStyle={{ color: "#cbd5e1", paddingTop: "10px" }} />
-          <Bar dataKey="Total" fill="#64748b" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="Overdue" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="Critical" fill="#ef4444" radius={[4, 4, 0, 0]} />
+          <Legend
+            wrapperStyle={{ color: '#94a3b8' }}
+            formatter={(value) => {
+              const colors: Record<string, string> = {
+                critical: '#ef4444',
+                overdue: '#f59e0b',
+                total: '#3b82f6',
+              };
+              return <span style={{ color: colors[value] || '#94a3b8' }}>{value}</span>;
+            }}
+          />
+          <Bar dataKey="critical" name="Critical" fill="#ef4444" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="overdue" name="Overdue" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="total_assets" name="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

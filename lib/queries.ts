@@ -1,1 +1,1 @@
-console.log("Raw Supabase response:", { assets, count, error });
+//console.log("Raw Supabase response:", { assets, count, error });

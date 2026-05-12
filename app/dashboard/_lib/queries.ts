@@ -220,7 +220,7 @@ export async function getOverdueAlerts(limit = 10) {
       `)
       .is("deleted_at", null)
       .lt("next_service_date", today.toISOString().split('T')[0])
-      .order("criticality", { ascending: false, nullsLast: true })
+      .order("criticality", { ascending: false })
       .limit(limit);
     
     if (error) {
@@ -228,7 +228,15 @@ export async function getOverdueAlerts(limit = 10) {
       return [];
     }
     
-    return Array.isArray(assets) ? assets : [];
+    // Transform the data to ensure stations is a single object
+    const transformedAssets = (assets || []).map((asset: any) => ({
+      ...asset,
+      stations: Array.isArray(asset.stations) && asset.stations.length > 0 
+        ? asset.stations[0] 
+        : asset.stations
+    }));
+    
+    return transformedAssets;
   } catch (err: any) {
     console.error("❌ Error fetching Overdue Alerts:", formatSupabaseError(err));
     return [];
@@ -339,7 +347,7 @@ export async function getAssets(
     `, { count: "exact" })
     .eq("deleted_at", null)
     .order("criticality", { ascending: false })
-    .order("next_service_date", { ascending: true, nullsLast: true });
+    .order("next_service_date", { ascending: true });
 
   if (status && status !== "all") {
     query = query.eq("maintenance_status", status);

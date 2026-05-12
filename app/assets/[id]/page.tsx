@@ -1,4 +1,3 @@
-// app/assets/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -11,9 +10,6 @@ import {
   AlertTriangle, 
   CheckCircle, 
   MapPin, 
-  Ruler, 
-  Gauge, 
-  Factory,
   Server,
   Info,
   Clock
@@ -66,31 +62,16 @@ export default function AssetDetailPage() {
     setError(null);
     
     try {
-      // Fetch asset details from the clean view
+      // First, get the asset from assets_clean (no date fields)
       const { data: assetData, error: assetError } = await supabase
         .from('assets_clean')
-        .select(`
-          id,
-          tag_number,
-          station_id,
-          maintenance_status,
-          criticality,
-          condition,
-          location_code,
-          size_inches,
-          pressure_class,
-          manufacturer,
-          operating_status,
-          asset_type,
-          sct_code,
-          serial_number
-        `)
+        .select('*')
         .eq('id', params.id)
         .single();
 
       if (assetError) throw assetError;
 
-      // Fetch date fields separately from main assets table
+      // Get date fields separately from main assets table
       const { data: dateData, error: dateError } = await supabase
         .from('assets')
         .select('last_service_date, next_service_date, installation_date, notes')
@@ -101,19 +82,48 @@ export default function AssetDetailPage() {
         console.error('Date fetch error:', dateError);
       }
 
-      // Fetch station info
-      const { data: stationData } = await supabase
-        .from('stations')
-        .select('code, name')
-        .eq('id', assetData.station_id)
-        .single();
+      // Get station info
+      let stationInfo = null;
+      if (assetData.station_id) {
+        const { data: stationData } = await supabase
+          .from('stations')
+          .select('code, name')
+          .eq('id', assetData.station_id)
+          .single();
+        
+        if (stationData) {
+          stationInfo = {
+            code: stationData.code,
+            name: stationData.name,
+            location_code: null
+          };
+        }
+      }
 
-      setAsset({
-        ...assetData,
-        ...dateData,
-        stations: stationData || null
-      });
+      // Combine all data
+      const combinedAsset: AssetDetail = {
+        id: assetData.id,
+        tag_number: assetData.tag_number,
+        station_id: assetData.station_id,
+        maintenance_status: assetData.maintenance_status,
+        criticality: assetData.criticality,
+        condition: assetData.condition,
+        last_service_date: dateData?.last_service_date || null,
+        next_service_date: dateData?.next_service_date || null,
+        operating_status: assetData.operating_status,
+        location_code: assetData.location_code,
+        size_inches: assetData.size_inches,
+        pressure_class: assetData.pressure_class,
+        manufacturer: assetData.manufacturer,
+        asset_type: assetData.asset_type,
+        sct_code: assetData.sct_code,
+        serial_number: assetData.serial_number,
+        installation_date: dateData?.installation_date || null,
+        notes: dateData?.notes || null,
+        stations: stationInfo
+      };
 
+      setAsset(combinedAsset);
     } catch (err: any) {
       console.error('Error fetching asset:', err);
       setError(err.message || 'Failed to load asset details');
@@ -180,7 +190,7 @@ export default function AssetDetailPage() {
   return (
     <div className="min-h-screen bg-navy-950 p-6">
       <div className="max-w-5xl mx-auto">
-        {/* Header with back button */}
+        {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => router.back()}
@@ -210,9 +220,9 @@ export default function AssetDetailPage() {
           </div>
         </div>
 
-        {/* Main Content Grid */}
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Key Information */}
+          {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
             {/* Location Card */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
@@ -229,11 +239,6 @@ export default function AssetDetailPage() {
                 {asset.location_code && (
                   <p className="text-navy-200">
                     <span className="text-navy-400">Location Code:</span> {asset.location_code}
-                  </p>
-                )}
-                {asset.stations?.location_code && (
-                  <p className="text-navy-200">
-                    <span className="text-navy-400">Station Location:</span> {asset.stations.location_code}
                   </p>
                 )}
               </div>
@@ -314,7 +319,7 @@ export default function AssetDetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Status & Notes */}
+          {/* Right Column */}
           <div className="space-y-6">
             {/* Current Status */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
@@ -350,7 +355,7 @@ export default function AssetDetailPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Actions */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
               <h2 className="text-lg font-semibold text-navy-100 mb-4">Actions</h2>
               <div className="space-y-3">
