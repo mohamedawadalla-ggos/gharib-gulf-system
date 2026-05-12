@@ -1,5 +1,7 @@
 // lib/useUserRole.ts
-import { useEffect, useState } from 'react';
+'use client';
+
+import { useEffect, useState } from 'react'; // ✅ Add this import
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export function useUserRole() {
@@ -10,7 +12,7 @@ export function useUserRole() {
 
   useEffect(() => {
     async function fetchUserRole() {
-      const { data: { user } } = await supabase.auth.getUser(); // ✅ Fixed destructuring
+      const {  { user } } = await supabase.auth.getUser();
       if (!user) {
         setRole(null);
         setCompanyCode(null);
@@ -19,7 +21,7 @@ export function useUserRole() {
       }
 
       // Check database role first (more secure than metadata)
-      const { data: roleData } = await supabase
+      const {  roleData } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
