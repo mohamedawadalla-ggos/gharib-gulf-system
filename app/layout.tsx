@@ -14,6 +14,9 @@ import {
   Wrench
 } from "lucide-react";
 
+// ✅ Import the Client Component for logout
+import { LogoutButton } from "@/components/LogoutButton";
+
 const ibmSans = IBM_Plex_Sans({ 
   subsets: ["latin"],
   variable: "--font-ibm-sans",
@@ -47,11 +50,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${ibmSans.variable} ${ibmMono.variable} bg-navy-950 text-navy-50`}>
+        
         {/* Navigation Header */}
         <header className="sticky top-0 z-50 bg-navy-900/95 backdrop-blur border-b border-navy-700">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
-              {/* Logo - Using regular img tag */}
+              
+              {/* Logo */}
               <Link href="/dashboard" className="flex items-center gap-3">
                 <img 
                   src="/logo.png" 
@@ -80,14 +85,17 @@ export default function RootLayout({
                 })}
               </nav>
 
-              {/* Right side */}
+              {/* Right side - Settings + Logout */}
               <div className="hidden md:flex items-center gap-2">
-                <button className="p-2 rounded-lg text-navy-400 hover:text-amber-400 hover:bg-navy-800 transition-colors">
+                <button 
+                  className="p-2 rounded-lg text-navy-400 hover:text-amber-400 hover:bg-navy-800 transition-colors"
+                  title="Settings"
+                >
                   <Settings className="w-5 h-5" />
                 </button>
-                <button className="p-2 rounded-lg text-navy-400 hover:text-red-400 hover:bg-navy-800 transition-colors">
-                  <LogOut className="w-5 h-5" />
-                </button>
+                
+                {/* ✅ Logout Button Component */}
+                <LogoutButton />
               </div>
 
               {/* Mobile Menu */}
