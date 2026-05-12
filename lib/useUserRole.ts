@@ -1,0 +1,52 @@
+// lib/useUserRole.ts
+import { useEffect, useState } from 'react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+
+export function useUserRole() {
+  const [role, setRole] = useState<string | null>(null);
+  const [companyCode, setCompanyCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const supabase = createSupabaseBrowserClient();
+
+  useEffect(() => {
+    async function fetchUserRole() {
+      const { data: { user } } = await supabase.auth.getUser(); // ✅ Fixed destructuring
+      if (!user) {
+        setRole(null);
+        setCompanyCode(null);
+        setLoading(false);
+        return;
+      }
+
+      // Check database role first (more secure than metadata)
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+      const userRole = roleData?.role || user.user_metadata?.role || 'crew';
+      const userCompany = user.user_metadata?.company_code;
+
+      setRole(userRole);
+      setCompanyCode(userCompany);
+      setLoading(false);
+    }
+    fetchUserRole();
+  }, []);
+
+  return { 
+    role, 
+    companyCode,
+    loading, 
+    isAdmin: role === 'admin',
+    isTopManagement: ['top_management', 'admin'].includes(role || ''),
+    isFieldManager: ['field_manager', 'supervisor', 'top_management', 'admin'].includes(role || ''),
+    isSupervisor: ['supervisor', 'field_manager', 'top_management', 'admin'].includes(role || ''),
+    isCrew: role === 'crew',
+    isClient: role === 'client',
+    isReadOnly: role === 'client',
+    canEdit: !['client'].includes(role || ''),
+    canDelete: ['admin'].includes(role || ''),
+  };
+}

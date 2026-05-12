@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useUserRole } from '@/lib/useUserRole'; // ✅ Added role hook
 import Link from 'next/link';
 import { 
   ArrowLeft, 
@@ -28,6 +29,10 @@ const supabase = createSupabaseBrowserClient();
 export default function WorkOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  
+  // ✅ Role-based access control
+  const { isClient, canEdit, canDelete } = useUserRole();
+  
   const [workOrder, setWorkOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -107,6 +112,12 @@ export default function WorkOrderDetailPage() {
 
   // FIXED: Update individual item status
   async function updateItemStatus(itemId: string, newStatus: string) {
+    // ✅ Block clients from editing
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to update valve status');
+      return;
+    }
+    
     try {
       console.log(`Updating item ${itemId} to ${newStatus}`);
       
@@ -130,6 +141,11 @@ export default function WorkOrderDetailPage() {
   }
 
   async function updateWorkOrderStatus(newStatus: string) {
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to update work order status');
+      return;
+    }
+    
     setUpdating(true);
     try {
       const updates: any = { status: newStatus };
@@ -153,6 +169,11 @@ export default function WorkOrderDetailPage() {
   }
 
   async function updateWorkOrder() {
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to update work order details');
+      return;
+    }
+    
     setUpdating(true);
     setError(null);
     try {
@@ -193,6 +214,11 @@ export default function WorkOrderDetailPage() {
 
   // FIXED: Mark all items as completed
   async function markAllItemsCompleted() {
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to complete work orders');
+      return;
+    }
+    
     if (!workOrder?.items) return;
     
     try {
@@ -218,6 +244,11 @@ export default function WorkOrderDetailPage() {
   }
 
   async function rollForwardToTomorrow() {
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to transfer valves');
+      return;
+    }
+    
     const pendingCount = workOrder?.items?.filter((i: any) => i.status === 'pending').length;
     if (pendingCount === 0) {
       alert('No pending valves to transfer');
@@ -301,6 +332,11 @@ export default function WorkOrderDetailPage() {
   }
 
   async function addAssetsToWorkOrder() {
+    if (isClient) {
+      alert('View-only access: Contact your supervisor to add valves');
+      return;
+    }
+    
     if (selectedAssets.length === 0) {
       alert('Please select assets to add');
       return;
@@ -497,15 +533,20 @@ export default function WorkOrderDetailPage() {
             
             {/* Action Buttons Group */}
             <div className="flex flex-wrap gap-2">
+              {/* Export Buttons - Available to all roles */}
               <button onClick={exportToCSV} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-green-900/50 text-green-400 border border-green-500/30 hover:bg-green-900/70 transition">
                 <FileSpreadsheet className="w-4 h-4" /> CSV
               </button>
               <button onClick={exportToPDF} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-900/50 text-blue-400 border border-blue-500/30 hover:bg-blue-900/70 transition">
                 <FileText className="w-4 h-4" /> PDF
               </button>
-              <button onClick={() => setShowDeleteConfirm(true)} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-red-900/50 text-red-400 border border-red-500/30 hover:bg-red-900/70 transition">
-                <Trash2 className="w-4 h-4" /> Delete
-              </button>
+              
+              {/* ✅ Delete Button - Only for Admins */}
+              {canDelete && (
+                <button onClick={() => setShowDeleteConfirm(true)} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-red-900/50 text-red-400 border border-red-500/30 hover:bg-red-900/70 transition">
+                  <Trash2 className="w-4 h-4" /> Delete
+                </button>
+              )}
             </div>
           </div>
 
@@ -562,18 +603,29 @@ export default function WorkOrderDetailPage() {
                       <td className="p-2">{item.asset?.location_code || '-'}</td>
                       <td className="p-2">{item.asset?.stations?.code || '-'}</td>
                       <td className="p-2">
-                        <select
-                          value={item.status}
-                          onChange={(e) => updateItemStatus(item.id, e.target.value)}
-                          className="px-2 py-1 bg-navy-800 border border-navy-600 rounded text-xs"
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="completed">Completed</option>
-                          <option value="skipped">Skipped</option>
-                        </select>
+                        {/* ✅ Status Dropdown - Read-only for clients */}
+                        {canEdit ? (
+                          <select
+                            value={item.status}
+                            onChange={(e) => updateItemStatus(item.id, e.target.value)}
+                            className="px-2 py-1 bg-navy-800 border border-navy-600 rounded text-xs"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="skipped">Skipped</option>
+                          </select>
+                        ) : (
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            item.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                            item.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {item.status}
+                          </span>
+                        )}
                       </td>
                       <td className="p-2">
-                        {item.status === 'pending' && (
+                        {item.status === 'pending' && canEdit && (
                           <button
                             onClick={() => updateItemStatus(item.id, 'completed')}
                             className="text-xs text-green-400 hover:text-green-300"
@@ -589,91 +641,95 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {/* END OF DAY ACTIONS SECTION */}
-          <div className="border-t border-navy-700 pt-6 mt-4">
-            <h3 className="font-semibold mb-4 flex items-center gap-2 text-amber-400">
-              <Clock className="w-5 h-5" />
-              END OF DAY ACTIONS
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Button 1: All Valves Done */}
-              <button
-                onClick={markAllItemsCompleted}
-                disabled={pendingCount === 0 && completedCount === totalCount}
-                className={`py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
-                  pendingCount === 0 && completedCount === totalCount
-                    ? 'bg-green-600 hover:bg-green-500 text-white'
-                    : pendingCount > 0
-                    ? 'bg-green-600 hover:bg-green-500 text-white'
-                    : 'bg-navy-700 text-navy-400 cursor-not-allowed'
-                }`}
-              >
-                <CheckCircle className="w-4 h-4" />
-                ✅ SCENARIO 1: All Done - Mark All Complete
-              </button>
+          {/* ✅ END OF DAY ACTIONS SECTION - Hidden for clients */}
+          {!isClient && (
+            <div className="border-t border-navy-700 pt-6 mt-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2 text-amber-400">
+                <Clock className="w-5 h-5" />
+                END OF DAY ACTIONS
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Button 1: All Valves Done */}
+                <button
+                  onClick={markAllItemsCompleted}
+                  disabled={pendingCount === 0 && completedCount === totalCount}
+                  className={`py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+                    pendingCount === 0 && completedCount === totalCount
+                      ? 'bg-green-600 hover:bg-green-500 text-white'
+                      : pendingCount > 0
+                      ? 'bg-green-600 hover:bg-green-500 text-white'
+                      : 'bg-navy-700 text-navy-400 cursor-not-allowed'
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  ✅ SCENARIO 1: All Done - Mark All Complete
+                </button>
 
-              {/* Button 2: Partial Completion - Transfer Remaining */}
-              <button
-                onClick={rollForwardToTomorrow}
-                disabled={pendingCount === 0 || rollingForward}
-                className={`py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
-                  pendingCount > 0
-                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                    : 'bg-navy-700 text-navy-400 cursor-not-allowed'
-                }`}
-              >
-                <ArrowRight className="w-4 h-4" />
-                ⏸️ SCENARIO 2: Partial Day ({pendingCount} remaining)
-              </button>
+                {/* Button 2: Partial Completion - Transfer Remaining */}
+                <button
+                  onClick={rollForwardToTomorrow}
+                  disabled={pendingCount === 0 || rollingForward}
+                  className={`py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+                    pendingCount > 0
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                      : 'bg-navy-700 text-navy-400 cursor-not-allowed'
+                  }`}
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  ⏸️ SCENARIO 2: Partial Day ({pendingCount} remaining)
+                </button>
 
-              {/* Button 3: Early Finish - Add More Valves */}
-              <button
-                onClick={() => {
-                  fetchAvailableFutureAssets();
-                  setShowAddAssetsModal(true);
-                }}
-                className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                🚀 SCENARIO 3: Early Finish - Add Valves
-              </button>
+                {/* Button 3: Early Finish - Add More Valves */}
+                <button
+                  onClick={() => {
+                    fetchAvailableFutureAssets();
+                    setShowAddAssetsModal(true);
+                  }}
+                  className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  🚀 SCENARIO 3: Early Finish - Add Valves
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Manual Update Section */}
-          <div className="border-t border-navy-700 pt-6 mt-4">
-            <h3 className="font-semibold mb-3">Manual Status Update</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <select 
-                value={formData.status} 
-                onChange={(e) => setFormData({...formData, status: e.target.value})} 
-                className="p-2 bg-navy-800 border border-navy-600 rounded-lg focus:outline-none focus:border-amber-400"
-              >
-                <option value="pending">Pending</option>
-                <option value="assigned">Assigned</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <input 
-                type="number" 
-                step="0.5" 
-                placeholder="Actual hours" 
-                value={formData.actual_hours} 
-                onChange={(e) => setFormData({...formData, actual_hours: e.target.value})} 
-                className="p-2 bg-navy-800 border border-navy-600 rounded-lg"
-              />
-              <button 
-                onClick={updateWorkOrder} 
-                disabled={updating} 
-                className="py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-navy-950 rounded-lg font-medium transition"
-              >
-                <Save className="w-4 h-4 inline mr-1" /> {updating ? 'Saving...' : 'Save Changes'}
-              </button>
+          {/* ✅ Manual Update Section - Hidden for clients */}
+          {!isClient && (
+            <div className="border-t border-navy-700 pt-6 mt-4">
+              <h3 className="font-semibold mb-3">Manual Status Update</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <select 
+                  value={formData.status} 
+                  onChange={(e) => setFormData({...formData, status: e.target.value})} 
+                  className="p-2 bg-navy-800 border border-navy-600 rounded-lg focus:outline-none focus:border-amber-400"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="assigned">Assigned</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <input 
+                  type="number" 
+                  step="0.5" 
+                  placeholder="Actual hours" 
+                  value={formData.actual_hours} 
+                  onChange={(e) => setFormData({...formData, actual_hours: e.target.value})} 
+                  className="p-2 bg-navy-800 border border-navy-600 rounded-lg"
+                />
+                <button 
+                  onClick={updateWorkOrder} 
+                  disabled={updating} 
+                  className="py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-navy-950 rounded-lg font-medium transition"
+                >
+                  <Save className="w-4 h-4 inline mr-1" /> {updating ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+              {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
             </div>
-            {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-          </div>
+          )}
         </div>
       </div>
 
