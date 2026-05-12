@@ -12,26 +12,37 @@ export function useUserRole() {
 
   useEffect(() => {
     async function fetchUserRole() {
-      const {  { user } } = await supabase.auth.getUser();
-      if (!user) {
+      try {
+        // ✅ SIMPLE: Get result, then access user explicitly
+        const result = await supabase.auth.getUser();
+        const user = result.data?.user;
+        
+        if (!user) {
+          setRole(null);
+          setCompanyCode(null);
+          setLoading(false);
+          return;
+        }
+
+        // Check database role first (more secure than metadata)
+        const {  roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
+        const userRole = roleData?.role || user.user_metadata?.role || 'crew';
+        const userCompany = user.user_metadata?.company_code;
+
+        setRole(userRole);
+        setCompanyCode(userCompany);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching user role:', error);
         setRole(null);
         setCompanyCode(null);
         setLoading(false);
-        return;
       }
-
-      const {  roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
-
-      const userRole = roleData?.role || user.user_metadata?.role || 'crew';
-      const userCompany = user.user_metadata?.company_code;
-
-      setRole(userRole);
-      setCompanyCode(userCompany);
-      setLoading(false);
     }
     fetchUserRole();
   }, []);
