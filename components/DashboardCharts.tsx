@@ -5,9 +5,9 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
-const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#F472B6'];
 
 interface DashboardChartsProps {
   assets: any[];
@@ -16,52 +16,69 @@ interface DashboardChartsProps {
 }
 
 export default function DashboardCharts({ assets, workOrders, campaigns = [] }: DashboardChartsProps) {
-  const [chartData, setChartData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
+  // ✅ Use useMemo to process data synchronously (no async state issues)
+  const chartData = useMemo(() => {
     if (!assets || assets.length === 0) {
-      setLoading(false);
-      return;
+      return {
+        applicationData: [],
+        manufacturerData: [],
+        locationData: [],
+        actuationData: [],
+        timelineData: [],
+        serviceFlagData: []
+      };
     }
 
     try {
-      const applicationData = processApplicationData(assets);
-      const manufacturerData = processManufacturerData(assets);
-      const locationData = processLocationData(assets);
-      const serviceFlagData = processServiceFlagData(assets);
-      const timelineData = processTimelineData(assets); // Using asset service dates
-
-      setChartData({
-        applicationData,
-        manufacturerData,
-        locationData,
-        serviceFlagData,
-        timelineData
-      });
+      return {
+        applicationData: processApplicationData(assets),
+        manufacturerData: processManufacturerData(assets),
+        locationData: processLocationData(assets),
+        actuationData: processActuationData(assets),
+        timelineData: processTimelineData(assets),
+        serviceFlagData: processServiceFlagData(assets)
+      };
     } catch (err) {
       console.error('❌ Chart processing error:', err);
-    } finally {
-      setLoading(false);
+      return {
+        applicationData: [],
+        manufacturerData: [],
+        locationData: [],
+        actuationData: [],
+        timelineData: [],
+        serviceFlagData: []
+      };
     }
   }, [assets, workOrders, campaigns]);
 
-  if (loading) return <div className="bg-navy-900 rounded-lg border border-navy-700 p-6 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto"></div></div>;
-  if (!assets || assets.length === 0) return <div className="bg-navy-800/30 border border-navy-700 rounded-lg p-6 text-center text-navy-400">No data available</div>;
-  if (!chartData) return null;
+  const {
+    applicationData = [],
+    manufacturerData = [],
+    locationData = [],
+    actuationData = [],
+    timelineData = [],
+    serviceFlagData = []
+  } = chartData || {};
 
-  const { applicationData, manufacturerData, locationData, serviceFlagData, timelineData } = chartData;
+  // ✅ Safe guard: if no assets, show empty state
+  if (!assets || assets.length === 0) {
+    return (
+      <div className="bg-navy-800/30 border border-navy-700 rounded-lg p-6 text-center text-navy-400">
+        No valve data available for charts
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Row 1: Application & Service Status */}
+      {/* Row 1: Application & Actuation Pie Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {applicationData.length > 0 && (
+        {applicationData && applicationData.length > 0 && (
           <ChartCard title={`Valve Count by Service Type (${applicationData.length} types)`}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie data={applicationData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
-                  {applicationData.map((entry: any, index: number) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
+                  {applicationData.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} itemStyle={{ color: '#f59e0b' }} />
                 <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} verticalAlign="bottom" height={40} />
@@ -69,28 +86,23 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
             </ResponsiveContainer>
           </ChartCard>
         )}
-
-        {serviceFlagData.length > 0 && (
-          <ChartCard title="Service Status (Good for Service vs Needs Maintenance)">
+        {actuationData && actuationData.length > 0 && (
+          <ChartCard title={`Valve Actuation Types (${actuationData.length} types)`}>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={serviceFlagData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                <XAxis type="number" stroke="#94a3b8" fontSize={11} />
-                <YAxis type="category" dataKey="name" stroke="#94a3b8" width={120} fontSize={11} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {serviceFlagData.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.name.includes('Good') ? '#10B981' : '#EF4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
+              <PieChart>
+                <Pie data={actuationData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
+                  {actuationData.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} itemStyle={{ color: '#3B82F6' }} />
+                <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} verticalAlign="bottom" height={40} />
+              </PieChart>
             </ResponsiveContainer>
           </ChartCard>
         )}
       </div>
 
-      {/* Row 2: Top Manufacturers */}
-      {manufacturerData.length > 0 && (
+      {/* Row 2: Top Manufacturers - Multi-Color Bars */}
+      {manufacturerData && manufacturerData.length > 0 && (
         <ChartCard title={`Top 12 Manufacturers by Valve Count`}>
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={manufacturerData.slice(0, 12)}>
@@ -98,14 +110,16 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
               <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={100} interval={0} fontSize={11} />
               <YAxis stroke="#94a3b8" fontSize={11} />
               <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} labelStyle={{ color: '#f59e0b', fontWeight: 'bold' }} formatter={(value: number) => [`${value.toLocaleString()} valves`, 'Count']} />
-              <Bar dataKey="value" fill="#F59E0B" radius={[4, 4, 0, 0]} label={{ position: 'top', fill: '#94a3b8', fontSize: 10, formatter: (v: number) => v.toLocaleString() }} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} label={{ position: 'top', fill: '#94a3b8', fontSize: 10, formatter: (v: number) => v.toLocaleString() }}>
+                {manufacturerData.slice(0, 12).map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       )}
 
-      {/* Row 3: Top Locations */}
-      {locationData.length > 0 && (
+      {/* Row 3: Top Locations - Multi-Color Horizontal Bars */}
+      {locationData && locationData.length > 0 && (
         <ChartCard title={`Top 15 Locations by Valve Count`}>
           <ResponsiveContainer width="100%" height={400}>
             <BarChart data={locationData.slice(0, 15)} layout="vertical">
@@ -113,23 +127,42 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
               <XAxis type="number" stroke="#94a3b8" fontSize={11} />
               <YAxis type="category" dataKey="name" stroke="#94a3b8" width={140} interval={0} fontSize={10} />
               <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} cursor={{ fill: '#1e293b', opacity: 0.3 }} formatter={(value: number, name: string, props: any) => [`${value.toLocaleString()} valves`, props.payload.name]} />
-              <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#94a3b8', fontSize: 10, formatter: (v: number) => v.toLocaleString() }} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#94a3b8', fontSize: 10, formatter: (v: number) => v.toLocaleString() }}>
+                {locationData.slice(0, 15).map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       )}
 
-      {/* Row 4: Service Activity Timeline */}
-      {timelineData.length > 0 && (
-        <ChartCard title="Service Activity Over Time (2018–2025)">
+      {/* Row 4: Service Activity Timeline - Proper Date Range */}
+      {timelineData && timelineData.length > 0 && (
+        <ChartCard title="Service Activity Over Time (Nov 2018 – Dec 2025)">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={timelineData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="month" stroke="#94a3b8" fontSize={10} interval="preserveStartEnd" />
+              <XAxis dataKey="month" stroke="#94a3b8" fontSize={10} interval="preserveStartEnd" tickFormatter={(value) => { const d = new Date(value + '-01'); return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); }} />
               <YAxis stroke="#94a3b8" fontSize={11} />
-              <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} formatter={(value: number) => [`${value.toLocaleString()} services`, 'Count']} labelFormatter={(label) => `Month: ${label}`} />
-              <Line type="monotone" dataKey="count" stroke="#F59E0B" strokeWidth={2} dot={{ fill: '#F59E0B', strokeWidth: 2, r: 3 }} activeDot={{ r: 6, fill: '#fbbf24' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} formatter={(value: number) => [`${value.toLocaleString()} services`, 'Count']} labelFormatter={(label) => { const d = new Date(label + '-01'); return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); }} />
+              <Line type="monotone" dataKey="count" stroke="#F59E0B" strokeWidth={2} dot={false} activeDot={{ r: 6, fill: '#fbbf24' }} />
             </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+
+      {/* Row 5: Service Flag Status */}
+      {serviceFlagData && serviceFlagData.length > 0 && (
+        <ChartCard title="Service Flag Status (Good for Service)">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={serviceFlagData} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis type="number" stroke="#94a3b8" fontSize={11} />
+              <YAxis type="category" dataKey="name" stroke="#94a3b8" width={120} fontSize={11} />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {serviceFlagData.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={entry.name.includes('Good') ? '#10B981' : '#EF4444'} />)}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       )}
@@ -146,59 +179,79 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-// === EXACT SCHEMA-MAPPED DATA PROCESSORS ===
+// === EXACT SCHEMA-MAPPED DATA PROCESSORS (Always return arrays) ===
 
-function processApplicationData(assets: any[]) {
+function processApplicationData(assets: any[]): Array<{name: string, value: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
   const appCount: Record<string, number> = {};
   assets.forEach(asset => {
-    const app = (asset.service_type || '').toLowerCase();
-    const normalized = app.includes('oil') ? 'Oil' : app.includes('water') ? 'Water' : app.includes('gas') ? 'Gas' : app.includes('diesel') ? 'Diesel' : app || 'Unknown';
+    if (!asset) return;
+    const raw = (asset.service_type || '').toLowerCase();
+    const normalized = raw.includes('oil') ? 'Oil' : raw.includes('water') ? 'Water' : raw.includes('gas') ? 'Gas' : raw.includes('diesel') ? 'Diesel' : raw.includes('injection') ? 'Injection' : raw || 'Unknown';
     appCount[normalized] = (appCount[normalized] || 0) + 1;
   });
-  return Object.entries(appCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  return Object.entries(appCount).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
 }
 
-function processManufacturerData(assets: any[]) {
+function processManufacturerData(assets: any[]): Array<{name: string, value: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
   const mfgCount: Record<string, number> = {};
   assets.forEach(asset => {
+    if (!asset) return;
     const mfg = asset.manufacturer || 'Unknown';
     mfgCount[mfg] = (mfgCount[mfg] || 0) + 1;
   });
-  return Object.entries(mfgCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  return Object.entries(mfgCount).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
 }
 
-function processLocationData(assets: any[]) {
+function processLocationData(assets: any[]): Array<{name: string, value: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
   const locCount: Record<string, number> = {};
   assets.forEach(asset => {
-    // Clean up location codes like "-Karama-C.P.F" -> "Karama C.P.F"
+    if (!asset) return;
     let loc = asset.location_code || asset.detailed_location || asset.parent_well_name || 'Unknown';
     loc = loc.replace(/^-+/, '').replace(/\s+/g, ' ').trim();
     locCount[loc] = (locCount[loc] || 0) + 1;
   });
-  return Object.entries(locCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  return Object.entries(locCount).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
 }
 
-function processServiceFlagData(assets: any[]) {
-  const flagCount: Record<string, number> = {};
+function processActuationData(assets: any[]): Array<{name: string, value: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
+  const actCount: Record<string, number> = {};
   assets.forEach(asset => {
-    const isGood = asset.condition === 'good' || asset.maintenance_status === 'up_to_date' || asset.repair_status === 'none';
-    const flag = isGood ? 'G/F (Good for Service)' : 'N/G or Needs Maintenance';
-    flagCount[flag] = (flagCount[flag] || 0) + 1;
+    if (!asset) return;
+    const raw = (asset.sct_code || asset.asset_type || '').toLowerCase();
+    const normalized = raw.includes('bar stem') ? 'Bar Stem' : raw.includes('gear') ? 'Gear Box' : raw.includes('h.w') || raw.includes('hand') ? 'Hand Wheel' : raw.includes('lever') ? 'Lever' : raw || 'Unknown';
+    actCount[normalized] = (actCount[normalized] || 0) + 1;
   });
-  return Object.entries(flagCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  return Object.entries(actCount).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
 }
 
-function processTimelineData(assets: any[]) {
+function processTimelineData(assets: any[]): Array<{month: string, count: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
   const monthCount: Record<string, number> = {};
   assets.forEach(asset => {
-    const date = asset.last_service_date || asset.next_service_date || asset.installation_date;
-    if (date) {
-      const d = new Date(date);
+    if (!asset) return;
+    [asset.last_service_date, asset.next_service_date, asset.installation_date].filter(Boolean).forEach((dateStr: any) => {
+      const d = new Date(dateStr);
       if (!isNaN(d.getTime())) {
         const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         monthCount[month] = (monthCount[month] || 0) + 1;
       }
-    }
+    });
   });
-  return Object.entries(monthCount).map(([month, count]) => ({ month, count })).sort((a, b) => a.month.localeCompare(b.month));
+  return Object.entries(monthCount).map(([month, count]) => ({ month, count: count as number })).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function processServiceFlagData(assets: any[]): Array<{name: string, value: number}> {
+  if (!assets || !Array.isArray(assets)) return [];
+  const flagCount: Record<string, number> = {};
+  assets.forEach(asset => {
+    if (!asset) return;
+    const isGood = asset.condition === 'good' || asset.maintenance_status === 'up_to_date' || asset.repair_status === 'none';
+    const flag = isGood ? 'G/F (Good for Service)' : 'N/G or Needs Maintenance';
+    flagCount[flag] = (flagCount[flag] || 0) + 1;
+  });
+  return Object.entries(flagCount).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
 }

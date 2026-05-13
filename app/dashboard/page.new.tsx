@@ -28,36 +28,22 @@ export default function DashboardNew() {
   }, [roleLoading, role, companyCode]);
 
   async function fetchDashboardData() {
-  setLoading(true);
-  setError(null);
-  try {
-    console.log('🔍 Starting dashboard fetch...');
-    
-    // ✅ FIX: Remove .limit() or increase to 10000 to get all 5,836 records
-    const assetsRes = await supabase.from('assets').select('*'); // No limit
-    const woRes = await supabase.from('work_orders').select('*').limit(500);
-    const campRes = await supabase.from('campaign_plans').select('*').limit(100);
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔍 Starting dashboard fetch...');
+      
+      // ✅ NO LIMIT - Get ALL 5,836 records
+      const assetsRes = await supabase.from('assets').select('*');
+      const woRes = await supabase.from('work_orders').select('*').limit(200);
+      const campRes = await supabase.from('campaign_plans').select('*').limit(100);
 
-    if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
-    if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
+      if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
+      if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
 
-    let assets = assetsRes.data || [];
-    let workOrders = woRes.data || [];
-    const campaigns = campRes.data || [];
-
-    console.log('✅ Data loaded:', {
-      assets: assets.length, // Should now be 5,836
-      workOrders: workOrders.length,
-      campaigns: campaigns.length
-    });
-
-    // Apply company filter for clients (client-side)
-    if (isClient && companyCode) {
-      assets = assets.filter((a: any) => a.company_id === companyCode);
-      workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
-    }
-
-    // ... rest of the function stays the same ...
+      let assets = assetsRes.data || [];
+      let workOrders = woRes.data || [];
+      const campaigns = campRes.data || [];
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
@@ -65,44 +51,53 @@ export default function DashboardNew() {
         campaigns: campaigns.length
       });
 
-      // ✅ SAFE KPIs with optional chaining
+      // Client-side filtering for clients
+      if (isClient && companyCode) {
+        assets = assets.filter((a: any) => a.company_id === companyCode);
+        workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
+      }
+
+      // ✅ EXACT SCHEMA-MAPPED KPIs
       const kpis = {
         total_assets: assets.length,
         unique_locations: new Set(assets.map((a: any) => 
-          a.location || a.station_name || a.well_name || a.site || 'Unknown'
+          (a.location_code || a.detailed_location || a.parent_well_name || 'Unknown').replace(/^-+/, '').trim()
         )).size,
-        unique_manufacturers: new Set(assets.map((a: any) => 
-          a.manufacturer || a.brand || a.supplier || 'Unknown'
-        )).size,
-        oil_valves: assets.filter((a: any) => 
-          a.application?.toLowerCase()?.includes('oil')
-        ).length,
-        water_valves: assets.filter((a: any) => 
-          a.application?.toLowerCase()?.includes('water')
-        ).length,
-        gas_valves: assets.filter((a: any) => 
-          a.application?.toLowerCase()?.includes('gas')
-        ).length,
+        unique_manufacturers: new Set(assets.map((a: any) => a.manufacturer || 'Unknown')).size,
+        
+        // Map to EXACT column: service_type
+        oil_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('oil')).length,
+        water_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('water')).length,
+        gas_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('gas')).length,
+        diesel_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('diesel')).length,
+        
+        // Actuation types from sct_code or asset_type
         bar_stem: assets.filter((a: any) => 
-          a.actuation_type?.toLowerCase()?.includes('bar') || 
-          a.actuation?.toLowerCase()?.includes('bar stem')
+          a.sct_code?.toLowerCase().includes('bar') || a.asset_type?.toLowerCase().includes('bar stem')
         ).length,
         gear_box: assets.filter((a: any) => 
-          a.actuation_type?.toLowerCase()?.includes('gear')
+          a.sct_code?.toLowerCase().includes('gear') || a.asset_type?.toLowerCase().includes('gear')
         ).length,
+        hand_wheel: assets.filter((a: any) => 
+          a.sct_code?.toLowerCase().includes('h.w') || a.sct_code?.toLowerCase().includes('hand') || a.asset_type?.toLowerCase().includes('hand wheel')
+        ).length,
+        lever: assets.filter((a: any) => 
+          a.sct_code?.toLowerCase().includes('lever') || a.asset_type?.toLowerCase().includes('lever')
+        ).length,
+        
+        // Service status
+        good_for_service: assets.filter((a: any) => 
+          a.condition === 'good' || a.maintenance_status === 'up_to_date' || a.repair_status === 'none'
+        ).length,
+        
+        // Work orders
         overdue_work_orders: workOrders.filter((wo: any) => 
-          wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && 
-          wo.status !== 'completed'
+          wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
         ).length,
         pending_work_orders: workOrders.filter((wo: any) => 
           ['pending', 'assigned', 'in_progress'].includes(wo.status)
         ).length,
-        completed_work_orders: workOrders.filter((wo: any) => 
-          wo.status === 'completed'
-        ).length,
-        good_for_service: assets.filter((a: any) => 
-          a.service_flag === 'G/F' || a.condition === 'good'
-        ).length,
+        completed_work_orders: workOrders.filter((wo: any) => wo.status === 'completed').length,
         active_campaigns: campaigns.filter((c: any) => c.status === 'active').length
       };
 
@@ -131,12 +126,7 @@ export default function DashboardNew() {
           <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-3" />
           <h2 className="text-xl font-semibold text-red-400 mb-2">Dashboard Error</h2>
           <p className="text-navy-300 mb-4 text-sm break-all">{error}</p>
-          <button 
-            onClick={fetchDashboardData} 
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition"
-          >
-            Retry
-          </button>
+          <button onClick={fetchDashboardData} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition">Retry</button>
         </div>
       </div>
     );
@@ -148,9 +138,7 @@ export default function DashboardNew() {
         <div className="max-w-2xl mx-auto bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6 text-center">
           <AlertTriangle className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
           <h2 className="text-xl font-semibold text-yellow-400 mb-2">No Data Loaded</h2>
-          <button onClick={fetchDashboardData} className="px-4 py-2 bg-amber-500 text-navy-950 rounded-lg">
-            Retry
-          </button>
+          <button onClick={fetchDashboardData} className="px-4 py-2 bg-amber-500 text-navy-950 rounded-lg">Retry</button>
         </div>
       </div>
     );
@@ -177,10 +165,7 @@ export default function DashboardNew() {
                 <Eye className="w-4 h-4" /> Client View
               </span>
             )}
-            <button 
-              onClick={fetchDashboardData}
-              className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm flex items-center gap-2 transition"
-            >
+            <button onClick={fetchDashboardData} className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm flex items-center gap-2 transition">
               <Filter className="w-4 h-4" /> Refresh
             </button>
           </div>
@@ -198,64 +183,26 @@ export default function DashboardNew() {
 
         {/* Main KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KPICard 
-            title="Total Assets" 
-            value={kpis.total_assets} 
-            subtitle={`${kpis.good_for_service} Good for Service`}
-            icon={<Package className="w-5 h-5" />}
-            color="amber"
-            trend={kpis.good_for_service > kpis.total_assets * 0.5 ? 'up' : 'neutral'}
-          />
-          <KPICard 
-            title="Overdue Work Orders" 
-            value={kpis.overdue_work_orders} 
-            subtitle="Requires attention"
-            icon={<AlertTriangle className="w-5 h-5" />}
-            color="red"
-            alert={kpis.overdue_work_orders > 0}
-          />
-          <KPICard 
-            title="Pending Work Orders" 
-            value={kpis.pending_work_orders} 
-            subtitle={`${kpis.completed_work_orders} completed`}
-            icon={<Clock className="w-5 h-5" />}
-            color="blue"
-          />
-          <KPICard 
-            title="Active Campaigns" 
-            value={kpis.active_campaigns} 
-            subtitle="Maintenance programs"
-            icon={<Users className="w-5 h-5" />}
-            color="green"
-          />
+          <KPICard title="Total Assets" value={kpis.total_assets} subtitle={`${kpis.good_for_service} Good for Service`} icon={<Package className="w-5 h-5" />} color="amber" trend={kpis.good_for_service > kpis.total_assets * 0.5 ? 'up' : 'neutral'} />
+          <KPICard title="Overdue Work Orders" value={kpis.overdue_work_orders} subtitle="Requires attention" icon={<AlertTriangle className="w-5 h-5" />} color="red" alert={kpis.overdue_work_orders > 0} />
+          <KPICard title="Pending Work Orders" value={kpis.pending_work_orders} subtitle={`${kpis.completed_work_orders} completed`} icon={<Clock className="w-5 h-5" />} color="blue" />
+          <KPICard title="Active Campaigns" value={kpis.active_campaigns} subtitle="Maintenance programs" icon={<Users className="w-5 h-5" />} color="green" />
         </div>
 
         {/* 📊 CHARTS SECTION */}
-        {assets && assets.length > 0 ? (
+        {assets && assets.length > 0 && (
           <div className="mb-6">
             <h2 className="text-xl font-semibold mb-4 text-navy-200 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-amber-400" />
-              Analytics & Insights
+              <TrendingUp className="w-5 h-5 text-amber-400" /> Analytics & Insights
             </h2>
-            <DashboardCharts 
-              assets={assets}
-              workOrders={workOrders || []}
-              campaigns={campaigns || []}
-            />
-          </div>
-        ) : (
-          <div className="bg-navy-800/30 border border-navy-700 rounded-lg p-6 mb-6 text-center">
-            <p className="text-navy-400">No assets data available for charts</p>
+            <DashboardCharts assets={assets} workOrders={workOrders || []} campaigns={campaigns || []} />
           </div>
         )}
 
         {/* Application Breakdown */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-5 lg:col-span-2">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Droplet className="w-4 h-4 text-amber-400" />
-              Valve Application Breakdown
-            </h3>
+            <h3 className="font-semibold mb-4 flex items-center gap-2"><Droplet className="w-4 h-4 text-amber-400" /> Valve Application Breakdown</h3>
             <div className="space-y-3">
               <ApplicationBar label="Oil" value={kpis.oil_valves} total={kpis.total_assets} color="bg-amber-500" />
               <ApplicationBar label="Water" value={kpis.water_valves} total={kpis.total_assets} color="bg-blue-500" />
@@ -263,59 +210,50 @@ export default function DashboardNew() {
               <ApplicationBar label="Other" value={kpis.total_assets - kpis.oil_valves - kpis.water_valves - kpis.gas_valves} total={kpis.total_assets} color="bg-navy-600" />
             </div>
           </div>
-
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-5">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Settings className="w-4 h-4 text-amber-400" />
-              Actuation Types
-            </h3>
+            <h3 className="font-semibold mb-4 flex items-center gap-2"><Settings className="w-4 h-4 text-amber-400" /> Actuation Types</h3>
             <div className="space-y-3">
               <ActuationItem label="Bar Stem" value={kpis.bar_stem} total={kpis.total_assets} />
               <ActuationItem label="Gear Box" value={kpis.gear_box} total={kpis.total_assets} />
-              <ActuationItem label="Hand Wheel" value={kpis.total_assets - kpis.bar_stem - kpis.gear_box} total={kpis.total_assets} />
+              <ActuationItem label="Hand Wheel/Lever" value={kpis.hand_wheel + kpis.lever} total={kpis.total_assets} />
             </div>
           </div>
         </div>
 
-        {/* Recent Work Orders */}
+        {/* Recent Work Orders - Shows TAG NUMBER not UUID */}
         <div className="bg-navy-900 rounded-lg border border-navy-700 p-5 mb-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              Recent Work Orders
-            </h3>
-            <Link href="/work-orders" className="text-amber-400 hover:text-amber-300 text-sm flex items-center gap-1">
-              View All <ArrowRight className="w-3 h-3" />
-            </Link>
+            <h3 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4 text-amber-400" /> Recent Work Orders</h3>
+            <Link href="/work-orders" className="text-amber-400 hover:text-amber-300 text-sm flex items-center gap-1">View All <ArrowRight className="w-3 h-3" /></Link>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-navy-700">
                 <tr className="text-left text-navy-400">
                   <th className="pb-3 font-medium">ID</th>
-                  <th className="pb-3 font-medium">Asset</th>
+                  <th className="pb-3 font-medium">Tag Number</th>
                   <th className="pb-3 font-medium">Status</th>
                   <th className="pb-3 font-medium">Due Date</th>
                   <th className="pb-3 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-800">
-                {(workOrders || []).slice(0, 5).map((wo: any) => (
-                  <tr key={wo.id} className="hover:bg-navy-800/50 transition">
-                    <td className="py-3 font-mono text-amber-400 text-xs">{wo.id?.slice(0, 8)}...</td>
-                    <td className="py-3 text-navy-300">{wo.asset_name || wo.asset_id?.slice(0, 12) || 'N/A'}</td>
-                    <td className="py-3"><StatusBadge status={wo.status} /></td>
-                    <td className="py-3 text-navy-300 text-xs">{wo.due_date ? new Date(wo.due_date).toLocaleDateString() : '-'}</td>
-                    <td className="py-3">
-                      <Link href={`/work-orders/${wo.id}`} className="text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1">
-                        View <ArrowRight className="w-3 h-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-                {(!workOrders || workOrders.length === 0) && (
-                  <tr><td colSpan={5} className="py-6 text-center text-navy-400">No work orders found</td></tr>
-                )}
+                {(workOrders || []).slice(0, 5).map((wo: any) => {
+                  const asset = assets.find((a: any) => a.id === wo.asset_id);
+                  const tagNumber = asset?.tag_number || wo.asset_name || wo.asset_id?.slice(0, 12) || 'N/A';
+                  return (
+                    <tr key={wo.id} className="hover:bg-navy-800/50 transition">
+                      <td className="py-3 font-mono text-amber-400 text-xs">{wo.id?.slice(0, 8)}...</td>
+                      <td className="py-3 text-navy-300 text-sm font-medium">{tagNumber}</td>
+                      <td className="py-3"><StatusBadge status={wo.status} /></td>
+                      <td className="py-3 text-navy-300 text-xs">{wo.due_date ? new Date(wo.due_date).toLocaleDateString() : '-'}</td>
+                      <td className="py-3">
+                        <Link href={`/work-orders/${wo.id}`} className="text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1">View <ArrowRight className="w-3 h-3" /></Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!workOrders || workOrders.length === 0) && <tr><td colSpan={5} className="py-6 text-center text-navy-400">No work orders found</td></tr>}
               </tbody>
             </table>
           </div>
@@ -323,19 +261,13 @@ export default function DashboardNew() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {!isClient && (
-            <QuickAction href="/work-orders/new" icon={<Wrench />} label="Create Work Order" color="amber" />
-          )}
-          {!isClient && (
-            <QuickAction href="/assets" icon={<Package />} label="Manage Assets" color="blue" />
-          )}
-          {(isAdmin || isTopManagement) && (
-            <QuickAction href="/reports" icon={<TrendingUp />} label="Export Reports" color="green" />
-          )}
+          {!isClient && <QuickAction href="/work-orders/new" icon={<Wrench />} label="Create Work Order" color="amber" />}
+          {!isClient && <QuickAction href="/assets" icon={<Package />} label="Manage Assets" color="blue" />}
+          {(isAdmin || isTopManagement) && <QuickAction href="/reports" icon={<TrendingUp />} label="Export Reports" color="green" />}
           <QuickAction href="/dashboard" icon={<Filter />} label="Refresh Data" color="navy" />
         </div>
 
-        {/* Footer Stats */}
+        {/* Footer */}
         <div className="mt-8 pt-6 border-t border-navy-800 text-center text-xs text-navy-500">
           <p>Khalda Valves Database • {kpis.total_assets.toLocaleString()} records • {kpis.unique_locations} locations • {kpis.unique_manufacturers} manufacturers</p>
           <p className="mt-1">Data source: Khalda Valves data.xlsx + Khalda Wellheads & Wellhead Valves data.xlsx</p>
@@ -346,7 +278,6 @@ export default function DashboardNew() {
 }
 
 // === Subcomponents ===
-
 function StatBadge({ icon, label, value, color }: any) {
   const colors: Record<string, string> = {
     amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
@@ -356,7 +287,6 @@ function StatBadge({ icon, label, value, color }: any) {
     cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
     yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
   };
-
   return (
     <div className={`p-3 rounded-lg border text-center ${colors[color]}`}>
       <div className="flex justify-center mb-1">{icon}</div>
@@ -373,7 +303,6 @@ function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: 
     blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
     green: 'bg-green-500/10 border-green-500/20 text-green-400',
   };
-
   return (
     <div className={`p-4 rounded-lg border ${alert ? 'border-red-500/50 bg-red-500/5' : colorClasses[color] || 'bg-navy-800/50 border-navy-700'}`}>
       <div className="flex justify-between items-start mb-2">
@@ -389,7 +318,6 @@ function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: 
 
 function ApplicationBar({ label, value, total, color }: any) {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
-  
   return (
     <div>
       <div className="flex justify-between text-sm mb-1">
@@ -397,10 +325,7 @@ function ApplicationBar({ label, value, total, color }: any) {
         <span className="text-navy-400">{value.toLocaleString()} ({percent}%)</span>
       </div>
       <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
-        <div 
-          className={`h-full ${color} transition-all duration-500`} 
-          style={{ width: `${percent}%` }}
-        />
+        <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${percent}%` }} />
       </div>
     </div>
   );
@@ -408,7 +333,6 @@ function ApplicationBar({ label, value, total, color }: any) {
 
 function ActuationItem({ label, value, total }: any) {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
-  
   return (
     <div className="flex justify-between items-center py-2 border-b border-navy-800 last:border-0">
       <span className="text-navy-300 text-sm">{label}</span>
@@ -428,12 +352,7 @@ function StatusBadge({ status }: any) {
     assigned: 'bg-purple-500/20 text-purple-400',
     cancelled: 'bg-red-500/20 text-red-400',
   };
-  
-  return (
-    <span className={`px-2 py-1 rounded text-xs capitalize ${styles[status] || 'bg-navy-700 text-navy-300'}`}>
-      {status?.replace('_', ' ') || 'N/A'}
-    </span>
-  );
+  return <span className={`px-2 py-1 rounded text-xs capitalize ${styles[status] || 'bg-navy-700 text-navy-300'}`}>{status?.replace('_', ' ') || 'N/A'}</span>;
 }
 
 function QuickAction({ href, icon, label, color }: any) {
@@ -443,7 +362,6 @@ function QuickAction({ href, icon, label, color }: any) {
     green: 'bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/20',
     navy: 'bg-navy-800 hover:bg-navy-700 text-navy-300 border-navy-600',
   };
-
   return (
     <Link href={href} className={`flex items-center gap-3 p-4 rounded-lg border transition ${colors[color]}`}>
       {icon}
