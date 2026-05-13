@@ -2,9 +2,14 @@
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export async function getAssetsForUser(supabase: any, role: string, companyCode: string | null) {
-  // ✅ FIXED: Simple explicit access instead of nested destructuring
-  const result = await supabase.auth.getUser();
-  const user = result.data?.user;
+  // Get current user
+  const userResult = await supabase.auth.getUser();
+  const user = userResult.data?.user;
+  
+  if (!user) {
+    // ✅ FIXED: Proper object syntax with 'data' key
+    return { data: [], error: { message: 'User not authenticated' } };
+  }
   
   let query = supabase.from('assets_clean').select('*');
   
@@ -22,9 +27,14 @@ export async function getAssetsForUser(supabase: any, role: string, companyCode:
 }
 
 export async function getWorkOrdersForUser(supabase: any, role: string, companyCode: string | null) {
-  // ✅ FIXED: Simple explicit access
-  const result = await supabase.auth.getUser();
-  const user = result.data?.user;
+  // Get current user
+  const userResult = await supabase.auth.getUser();
+  const user = userResult.data?.user;
+  
+  if (!user) {
+    // ✅ FIXED: Proper object syntax
+    return { data: [], error: { message: 'User not authenticated' } };
+  }
   
   let query = supabase.from('work_orders').select('*');
   
@@ -37,21 +47,25 @@ export async function getWorkOrdersForUser(supabase: any, role: string, companyC
 }
 
 export async function getCurrentUserRole(supabase: any) {
-  // ✅ FIXED: Simple explicit access - no nested destructuring
-  const result = await supabase.auth.getUser();
-  const user = result.data?.user;
+  // Get current user
+  const userResult = await supabase.auth.getUser();
+  const user = userResult.data?.user;
   
-  if (!user) return { role: null, companyCode: null };
+  if (!user) {
+    return { role: null, companyCode: null };
+  }
   
-  // Check database role first (more secure than metadata)
-  const {  roleData } = await supabase
-  const dbRole = roleResult.data?.role;
+  // Get role from database - NO destructuring, explicit access
+  const roleQueryResult = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
     .single();
   
-  const userRole = roleData?.role || user.user_metadata?.role || 'crew';
+  // Access via .data.role
+  const dbRole = roleQueryResult.data?.role;
+  
+  const userRole = dbRole || user.user_metadata?.role || 'crew';
   const userCompany = user.user_metadata?.company_code;
   
   return { role: userRole, companyCode: userCompany };
