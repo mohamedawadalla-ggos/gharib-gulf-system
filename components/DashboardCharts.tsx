@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { useMemo } from 'react';
 
-const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#F472B6'];
+const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#F472B6', '#64748B'];
 
 interface DashboardChartsProps {
   assets: any[];
@@ -16,7 +16,7 @@ interface DashboardChartsProps {
 }
 
 export default function DashboardCharts({ assets, workOrders, campaigns = [] }: DashboardChartsProps) {
-  // ✅ Use useMemo for synchronous data processing (no async state issues)
+  // ✅ Use useMemo for synchronous data processing
   const chartData = useMemo(() => {
     if (!assets || !Array.isArray(assets) || assets.length === 0) {
       return {
@@ -51,6 +51,19 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
     }
   }, [assets, workOrders, campaigns]);
 
+  // ✅ Helper function to group top N + Others
+  const groupTopNWithOthers = (data: any[], topN: number, othersLabel: string = 'Others') => {
+    if (!data || data.length <= topN) return data;
+    
+    const topItems = data.slice(0, topN);
+    const othersSum = data.slice(topN).reduce((sum, item) => sum + item.value, 0);
+    
+    return [
+      ...topItems,
+      { name: othersLabel, value: othersSum }
+    ];
+  };
+
   // ✅ Safe destructuring with defaults
   const {
     applicationData = [],
@@ -60,6 +73,24 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
     timelineData = [],
     serviceFlagData = []
   } = chartData || {};
+
+  // ✅ Group manufacturers: Top 10 + Others
+  const manufacturersWithOthers = useMemo(() => 
+    groupTopNWithOthers(manufacturerData, 10, 'Others'),
+    [manufacturerData]
+  );
+
+  // ✅ Group locations: Top 10 + Others
+  const locationsWithOthers = useMemo(() => 
+    groupTopNWithOthers(locationData, 10, 'Others'),
+    [locationData]
+  );
+
+  // ✅ Group actuation types: Top 10 + Others
+  const actuationWithOthers = useMemo(() => 
+    groupTopNWithOthers(actuationData, 10, 'Others'),
+    [actuationData]
+  );
 
   // ✅ Early return if no data
   if (!assets || assets.length === 0) {
@@ -75,7 +106,7 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
       {/* Row 1: Application & Actuation Pie Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {applicationData && applicationData.length > 0 && (
-          <ChartCard title={`Valve Count by Service Type (${applicationData.length} types)`}>
+          <ChartCard title={`Valves Application Type (${applicationData.length} types)`}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie 
@@ -101,40 +132,45 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
             </ResponsiveContainer>
           </ChartCard>
         )}
-        {actuationData && actuationData.length > 0 && (
-          <ChartCard title={`Valve Actuation Types (${actuationData.length} types)`}>
+        {actuationWithOthers && actuationWithOthers.length > 0 && (
+          <ChartCard title={`Valve Classification Criteria (${actuationWithOthers.length} categories)`}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie 
-                  data={actuationData} 
+                  data={actuationWithOthers} 
                   cx="50%" 
                   cy="50%" 
                   labelLine={false} 
-                  label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} 
+                  label={({ name, percent }: any) => {
+                    const displayName = name.length > 15 ? name.substring(0, 12) + '...' : name;
+                    return `${displayName} ${(percent * 100).toFixed(0)}%`;
+                  }}
                   outerRadius={100} 
                   fill="#8884d8" 
                   dataKey="value"
+                  minAngle={15}
                 >
-                  {actuationData.map((entry: any, index: number) => (
+                  {actuationWithOthers.map((entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} 
-                  itemStyle={{ color: '#3B82F6' }} 
+                  itemStyle={{ color: '#3B82F6', fontSize: '11px' }}
+                  formatter={(value: any, name: any) => [`${Number(value).toLocaleString()} valves`, name]}
                 />
-                <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} verticalAlign="bottom" height={40} />
+                <Legend wrapperStyle={{ fontSize: '11px', color: '#94a3b8' }} verticalAlign="bottom" height={60} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
         )}
       </div>
 
-      {/* Row 2: Top Manufacturers - Multi-Color Bars */}
-      {manufacturerData && manufacturerData.length > 0 && (
-        <ChartCard title={`Top 12 Manufacturers by Valve Count`}>
+      {/* Row 2: Top Manufacturers - Multi-Color Bars (Top 10 + Others) */}
+      {manufacturersWithOthers && manufacturersWithOthers.length > 0 && (
+        <ChartCard title={`Top 10 Manufacturers by Valve Count`}>
           <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={manufacturerData.slice(0, 12)}>
+            <BarChart data={manufacturersWithOthers}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis 
                 dataKey="name" 
@@ -149,17 +185,15 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
               <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} 
                 labelStyle={{ color: '#f59e0b', fontWeight: 'bold' }} 
-                // ✅ FIX: Use (value: any) not (value: number)
                 formatter={(value: any) => [`${Number(value).toLocaleString()} valves`, 'Count']} 
               />
               <Bar 
                 dataKey="value" 
                 radius={[4, 4, 0, 0]} 
-                // ✅ FIX: Use (v: any) not (v: number)
                 label={{ position: 'top', fill: '#94a3b8', fontSize: 10, formatter: (v: any) => Number(v).toLocaleString() }}
               >
-                {manufacturerData.slice(0, 12).map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                {manufacturersWithOthers.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={entry.name === 'Others' ? '#64748B' : COLORS[index % COLORS.length]} />
                 ))}
               </Bar>
             </BarChart>
@@ -167,11 +201,11 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
         </ChartCard>
       )}
 
-      {/* Row 3: Top Locations - Multi-Color Horizontal Bars */}
-      {locationData && locationData.length > 0 && (
-        <ChartCard title={`Top 15 Locations by Valve Count`}>
+      {/* Row 3: Top Locations - Multi-Color Horizontal Bars (Top 10 + Others) */}
+      {locationsWithOthers && locationsWithOthers.length > 0 && (
+        <ChartCard title={`Top 10 Locations by Valve Count`}>
           <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={locationData.slice(0, 15)} layout="vertical">
+            <BarChart data={locationsWithOthers} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
               <XAxis type="number" stroke="#94a3b8" fontSize={11} />
               <YAxis 
@@ -185,17 +219,15 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
               <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} 
                 cursor={{ fill: '#1e293b', opacity: 0.3 }} 
-                // ✅ FIX: Use (value: any) not (value: number)
                 formatter={(value: any, name: any, props: any) => [`${Number(value).toLocaleString()} valves`, props?.payload?.name || '']} 
               />
               <Bar 
                 dataKey="value" 
                 radius={[0, 4, 4, 0]} 
-                // ✅ FIX: Use (v: any) not (v: number)
                 label={{ position: 'right', fill: '#94a3b8', fontSize: 10, formatter: (v: any) => Number(v).toLocaleString() }}
               >
-                {locationData.slice(0, 15).map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                {locationsWithOthers.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={entry.name === 'Others' ? '#64748B' : COLORS[index % COLORS.length]} />
                 ))}
               </Bar>
             </BarChart>
@@ -203,7 +235,7 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
         </ChartCard>
       )}
 
-      {/* Row 4: Service Activity Timeline - Proper Date Range */}
+      {/* Row 4: Service Activity Timeline */}
       {timelineData && timelineData.length > 0 && (
         <ChartCard title="Service Activity Over Time (Nov 2018 – Dec 2025)">
           <ResponsiveContainer width="100%" height={300}>
@@ -222,7 +254,6 @@ export default function DashboardCharts({ assets, workOrders, campaigns = [] }: 
               <YAxis stroke="#94a3b8" fontSize={11} />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f1f5f9' }} 
-                // ✅ FIX: Use (value: any) not (value: number)
                 formatter={(value: any) => [`${Number(value).toLocaleString()} services`, 'Count']} 
                 labelFormatter={(label: any) => { 
                   const d = new Date(label + '-01'); 
@@ -281,7 +312,7 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-// === EXACT SCHEMA-MAPPED DATA PROCESSORS (Always return arrays) ===
+// === DATA PROCESSORS (Same as before) ===
 
 function processApplicationData(assets: any[]): Array<{name: string, value: number}> {
   if (!assets || !Array.isArray(assets)) return [];
@@ -289,7 +320,6 @@ function processApplicationData(assets: any[]): Array<{name: string, value: numb
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Map to EXACT DB column: service_type
     const raw = (asset.service_type || '').toLowerCase();
     const normalized = 
       raw.includes('oil') ? 'Oil' :
@@ -313,7 +343,6 @@ function processManufacturerData(assets: any[]): Array<{name: string, value: num
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Map to EXACT DB column: manufacturer
     const mfg = asset.manufacturer || 'Unknown';
     mfgCount[mfg] = (mfgCount[mfg] || 0) + 1;
   });
@@ -329,9 +358,7 @@ function processLocationData(assets: any[]): Array<{name: string, value: number}
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Map to EXACT DB columns: location_code, detailed_location, parent_well_name
     let loc = asset.location_code || asset.detailed_location || asset.parent_well_name || 'Unknown';
-    // Clean up location codes like "-Karama-C.P.F" -> "Karama C.P.F"
     loc = loc.replace(/^-+/, '').replace(/\s+/g, ' ').trim();
     locCount[loc] = (locCount[loc] || 0) + 1;
   });
@@ -347,7 +374,6 @@ function processActuationData(assets: any[]): Array<{name: string, value: number
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Map to EXACT DB columns: sct_code, asset_type
     const raw = (asset.sct_code || asset.asset_type || '').toLowerCase();
     const normalized = 
       raw.includes('bar stem') ? 'Bar Stem' :
@@ -370,7 +396,6 @@ function processTimelineData(assets: any[]): Array<{month: string, count: number
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Use EXACT DB columns: last_service_date, next_service_date, installation_date
     [asset.last_service_date, asset.next_service_date, asset.installation_date]
       .filter(Boolean)
       .forEach((dateStr: any) => {
@@ -393,7 +418,6 @@ function processServiceFlagData(assets: any[]): Array<{name: string, value: numb
   
   assets.forEach(asset => {
     if (!asset) return;
-    // ✅ Map to EXACT DB columns: condition, maintenance_status, repair_status
     const isGood = 
       asset.condition === 'good' || 
       asset.maintenance_status === 'up_to_date' || 
