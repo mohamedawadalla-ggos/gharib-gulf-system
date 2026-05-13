@@ -28,28 +28,36 @@ export default function DashboardNew() {
   }, [roleLoading, role, companyCode]);
 
   async function fetchDashboardData() {
-    setLoading(true);
-    setError(null);
-    try {
-      console.log('🔍 Starting dashboard fetch...');
-      
-      // ✅ SAFE: Simple query without complex joins
-      const assetsRes = await supabase.from('assets').select('*').limit(500);
-      const woRes = await supabase.from('work_orders').select('*').limit(200);
-      const campRes = await supabase.from('campaign_plans').select('*').limit(50);
+  setLoading(true);
+  setError(null);
+  try {
+    console.log('🔍 Starting dashboard fetch...');
+    
+    // ✅ FIX: Remove .limit() or increase to 10000 to get all 5,836 records
+    const assetsRes = await supabase.from('assets').select('*'); // No limit
+    const woRes = await supabase.from('work_orders').select('*').limit(500);
+    const campRes = await supabase.from('campaign_plans').select('*').limit(100);
 
-      if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
-      if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
+    if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
+    if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
 
-      let assets = assetsRes.data || [];
-      let workOrders = woRes.data || [];
-      const campaigns = campRes.data || [];
+    let assets = assetsRes.data || [];
+    let workOrders = woRes.data || [];
+    const campaigns = campRes.data || [];
 
-      // Apply company filter for clients (client-side filtering)
-      if (isClient && companyCode) {
-        assets = assets.filter((a: any) => a.company_id === companyCode);
-        workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
-      }
+    console.log('✅ Data loaded:', {
+      assets: assets.length, // Should now be 5,836
+      workOrders: workOrders.length,
+      campaigns: campaigns.length
+    });
+
+    // Apply company filter for clients (client-side)
+    if (isClient && companyCode) {
+      assets = assets.filter((a: any) => a.company_id === companyCode);
+      workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
+    }
+
+    // ... rest of the function stays the same ...
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
