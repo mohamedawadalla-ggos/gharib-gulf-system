@@ -45,6 +45,7 @@ export async function getCurrentUserRole(supabase: any) {
   
   // Check database role first (more secure than metadata)
   const {  roleData } = await supabase
+  const dbRole = roleResult.data?.role;
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
