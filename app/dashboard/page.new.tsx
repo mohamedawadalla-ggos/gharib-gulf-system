@@ -33,10 +33,20 @@ export default function DashboardNew() {
     try {
       console.log('🔍 Starting dashboard fetch...');
       
-      // ✅ NO LIMIT - Get ALL 5,836 records
-      const assetsRes = await supabase.from('assets').select('*');
-      const woRes = await supabase.from('work_orders').select('*').limit(200);
-      const campRes = await supabase.from('campaign_plans').select('*').limit(100);
+      // ✅ Join assets with valve_details
+      const assetsRes = await supabase
+        .from('assets')
+        .select(`
+          *,
+          valve_details (
+            actuator_type,
+            valve_type
+          )
+        `)
+        .limit(10000);
+
+      const woRes = await supabase.from('work_orders').select('*').limit(5000);
+      const campRes = await supabase.from('campaign_plans').select('*').limit(1000);
 
       if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
       if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
@@ -47,8 +57,7 @@ export default function DashboardNew() {
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
-        workOrders: workOrders.length,
-        campaigns: campaigns.length
+        details_found: assets.filter(a => a.valve_details).length
       });
 
       // Client-side filtering for clients
@@ -56,6 +65,14 @@ export default function DashboardNew() {
         assets = assets.filter((a: any) => a.company_id === companyCode);
         workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
       }
+
+      // ✅ Helper to count actuator types from the joined table
+      const countActuator = (keyword: string) => {
+        return assets.filter(a => {
+          const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
+          return type.includes(keyword);
+        }).length;
+      };
 
       // ✅ EXACT SCHEMA-MAPPED KPIs
       const kpis = {
@@ -65,25 +82,23 @@ export default function DashboardNew() {
         )).size,
         unique_manufacturers: new Set(assets.map((a: any) => a.manufacturer || 'Unknown')).size,
         
-        // Map to EXACT column: service_type
+        // Service Type
         oil_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('oil')).length,
         water_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('water')).length,
         gas_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('gas')).length,
         diesel_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('diesel')).length,
         
-        // Actuation types from sct_code or asset_type
-        bar_stem: assets.filter((a: any) => 
-          a.sct_code?.toLowerCase().includes('bar') || a.asset_type?.toLowerCase().includes('bar stem')
+        // ✅ UPDATED: Check sct_code (which contains 'Wellhead' in your screenshot)
+        wellhead_valves: assets.filter(a => 
+          (a.sct_code || '').toLowerCase().includes('wellhead')
         ).length,
-        gear_box: assets.filter((a: any) => 
-          a.sct_code?.toLowerCase().includes('gear') || a.asset_type?.toLowerCase().includes('gear')
-        ).length,
-        hand_wheel: assets.filter((a: any) => 
-          a.sct_code?.toLowerCase().includes('h.w') || a.sct_code?.toLowerCase().includes('hand') || a.asset_type?.toLowerCase().includes('hand wheel')
-        ).length,
-        lever: assets.filter((a: any) => 
-          a.sct_code?.toLowerCase().includes('lever') || a.asset_type?.toLowerCase().includes('lever')
-        ).length,
+        
+        // Actuation types (for breakdown section)
+        bar_stem: countActuator('bar'),
+        gear_box: countActuator('gear'),
+        hand_wheel: countActuator('wheel'),
+        lever: countActuator('lever'),
+        manual: countActuator('manual'),
         
         // Service status
         good_for_service: assets.filter((a: any) => 
@@ -177,7 +192,7 @@ export default function DashboardNew() {
           <StatBadge icon={<MapPin />} label="Locations" value={kpis.unique_locations} color="blue" />
           <StatBadge icon={<Factory />} label="Manufacturers" value={kpis.unique_manufacturers} color="purple" />
           <StatBadge icon={<Droplet />} label="Oil Valves" value={kpis.oil_valves} color="green" />
-          <StatBadge icon={<Settings />} label="Bar Stem" value={kpis.bar_stem} color="cyan" />
+          <StatBadge icon={<Settings />} label="Wellhead Valves" value={kpis.wellhead_valves} color="cyan" />
           <StatBadge icon={<Calendar />} label="Pending WOs" value={kpis.pending_work_orders} color="yellow" />
         </div>
 
@@ -213,14 +228,15 @@ export default function DashboardNew() {
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-5">
             <h3 className="font-semibold mb-4 flex items-center gap-2"><Settings className="w-4 h-4 text-amber-400" /> Actuation Types</h3>
             <div className="space-y-3">
-              <ActuationItem label="Bar Stem" value={kpis.bar_stem} total={kpis.total_assets} />
-              <ActuationItem label="Gear Box" value={kpis.gear_box} total={kpis.total_assets} />
-              <ActuationItem label="Hand Wheel/Lever" value={kpis.hand_wheel + kpis.lever} total={kpis.total_assets} />
+              <ActuationItem label="Bar Stem" value={kpis.bar_stem || 0} total={kpis.total_assets} />
+              <ActuationItem label="Gear Box" value={kpis.gear_box || 0} total={kpis.total_assets} />
+              <ActuationItem label="Hand Wheel" value={kpis.hand_wheel || 0} total={kpis.total_assets} />
+              <ActuationItem label="Manual (Other)" value={kpis.manual || 0} total={kpis.total_assets} />
             </div>
           </div>
         </div>
 
-        {/* Recent Work Orders - Shows TAG NUMBER not UUID */}
+        {/* Recent Work Orders */}
         <div className="bg-navy-900 rounded-lg border border-navy-700 p-5 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4 text-amber-400" /> Recent Work Orders</h3>
