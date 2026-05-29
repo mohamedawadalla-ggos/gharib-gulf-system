@@ -5,15 +5,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useUserRole } from '@/lib/useUserRole';
-import { useToast } from '@/hooks/useToast'; // ✅ Added toast hook
+import { useToast } from '@/hooks/useToast';
 import Link from 'next/link';
 import { 
   ArrowLeft, CheckCircle, Clock, AlertCircle, User, Calendar, 
-  Wrench, Save, Trash2, AlertTriangle, Download, FileText, 
+  Wrench, Save, Trash2, AlertTriangle, FileText, 
   FileSpreadsheet, Plus, ArrowRight, X, Loader2
 } from 'lucide-react';
 
-// ✅ TypeScript Interfaces
+const supabase = createSupabaseBrowserClient();
+
+// TypeScript Interfaces
 interface Asset {
   id: string;
   tag_number: string;
@@ -40,6 +42,7 @@ interface WorkOrder {
   estimated_hours: number | null;
   actual_hours: number | null;
   notes: string | null;
+  completed_date?: string | null;  // ✅ Added for completed work orders
   items?: WorkOrderItem[];
 }
 
@@ -49,14 +52,15 @@ interface FormData {
   notes: string;
 }
 
-const supabase = createSupabaseBrowserClient();
+interface FutureAsset extends Asset {
+  source_wo_id?: string;
+  source_wo_number?: string;
+}
 
 export default function WorkOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { showToast } = useToast(); // ✅ Initialize toast
-  
-  // Role-based access control
+  const { showToast } = useToast();
   const { isClient, canEdit, canDelete } = useUserRole();
   
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
@@ -66,8 +70,8 @@ export default function WorkOrderDetailPage() {
   const [rollingForward, setRollingForward] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddAssetsModal, setShowAddAssetsModal] = useState(false);
-  const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
+  const [availableAssets, setAvailableAssets] = useState<FutureAsset[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<FutureAsset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     status: '',
@@ -75,7 +79,7 @@ export default function WorkOrderDetailPage() {
     notes: ''
   });
 
-  // ✅ Memoized fetch function to prevent re-renders
+  // Fetch work order with nested asset data
   const fetchWorkOrder = useCallback(async () => {
     if (!params.id) return;
     
@@ -90,18 +94,18 @@ export default function WorkOrderDetailPage() {
 
       if (woError) throw woError;
       
-      // Fetch items with asset details
+      // Fetch items with proper nested asset join
       const { data: itemsData, error: itemsError } = await supabase
         .from('work_order_items')
         .select(`
           id,
           asset_id,
           status,
-          asset:assets_clean!inner(
+          asset:assets (
             id,
             tag_number,
             location_code,
-            stations(code)
+            stations ( code )
           )
         `)
         .eq('work_order_id', params.id);
@@ -135,7 +139,7 @@ export default function WorkOrderDetailPage() {
     fetchWorkOrder();
   }, [fetchWorkOrder]);
 
-  // ✅ Update individual item status with toast feedback
+  // Update individual item status
   async function updateItemStatus(itemId: string, newStatus: string) {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -158,6 +162,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Update work order status
   async function updateWorkOrderStatus(newStatus: string) {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -187,6 +192,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Manual work order update
   async function updateWorkOrder() {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -231,6 +237,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Mark all items as completed
   async function markAllItemsCompleted() {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -257,6 +264,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Roll forward pending items to tomorrow
   async function rollForwardToTomorrow() {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -293,6 +301,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Fetch available future assets for adding
   async function fetchAvailableFutureAssets() {
     setLoadingAssets(true);
     try {
@@ -306,11 +315,11 @@ export default function WorkOrderDetailPage() {
             id,
             asset_id,
             status,
-            asset:assets_clean(
+            asset:assets (
               id,
               tag_number,
               location_code,
-              stations(code)
+              stations ( code )
             )
           )
         `)
@@ -321,7 +330,7 @@ export default function WorkOrderDetailPage() {
       
       if (error) throw error;
       
-      const futureAssets: Asset[] = [];
+      const futureAssets: FutureAsset[] = [];
       (data || []).forEach((wo: any) => {
         (wo.items || []).forEach((item: any) => {
           if (item.status === 'pending' && item.asset) {
@@ -330,7 +339,9 @@ export default function WorkOrderDetailPage() {
               tag_number: item.asset.tag_number,
               location_code: item.asset.location_code,
               stations: item.asset.stations,
-            } as Asset);
+              source_wo_id: wo.id,
+              source_wo_number: wo.work_order_number
+            });
           }
         });
       });
@@ -344,6 +355,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
+  // Add selected assets to current work order
   async function addAssetsToWorkOrder() {
     if (isClient) {
       showToast('View-only access: Contact your supervisor', 'error');
@@ -369,14 +381,19 @@ export default function WorkOrderDetailPage() {
       
       if (insertError) throw insertError;
       
-      const sourceWoIds = [...new Set(selectedAssets.map(a => (a as any).source_wo_id))];
+      const sourceWoIds = [...new Set(selectedAssets.map(a => a.source_wo_id).filter(Boolean))];
       for (const woId of sourceWoIds) {
-        const assetIds = selectedAssets.filter(a => (a as any).source_wo_id === woId).map(a => a.id);
-        await supabase
-          .from('work_order_items')
-          .delete()
-          .eq('work_order_id', woId)
-          .in('asset_id', assetIds);
+        const assetIds = selectedAssets
+          .filter(a => a.source_wo_id === woId)
+          .map(a => a.id);
+        
+        if (assetIds.length > 0) {
+          await supabase
+            .from('work_order_items')
+            .delete()
+            .eq('work_order_id', woId)
+            .in('asset_id', assetIds);
+        }
       }
       
       showToast(`✅ Added ${selectedAssets.length} valve(s)`, 'success');
@@ -390,7 +407,7 @@ export default function WorkOrderDetailPage() {
     }
   }
 
-  const toggleAssetSelection = (asset: Asset) => {
+  const toggleAssetSelection = (asset: FutureAsset) => {
     if (selectedAssets.find(a => a.id === asset.id)) {
       setSelectedAssets(selectedAssets.filter(a => a.id !== asset.id));
     } else {
@@ -398,20 +415,25 @@ export default function WorkOrderDetailPage() {
     }
   };
 
+  // CSV Export with proper nested data access
   async function exportToCSV() {
-    if (!workOrder) return;
+    if (!workOrder?.items) return;
     
     const rows = [['Tag Number', 'Location Code', 'Station', 'Status']];
-    for (const item of workOrder.items || []) {
+    for (const item of workOrder.items) {
       rows.push([
-        item.asset?.tag_number || item.asset_id,
+        item.asset?.tag_number || 'N/A',
         item.asset?.location_code || '-',
         item.asset?.stations?.code || '-',
         item.status
       ]);
     }
     
-    const csvContent = rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const csvContent = [
+      rows[0].join(','),
+      ...rows.slice(1).map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -422,6 +444,7 @@ export default function WorkOrderDetailPage() {
     showToast('CSV exported successfully', 'success');
   }
 
+  // PDF Export
   function exportToPDF() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -431,7 +454,7 @@ export default function WorkOrderDetailPage() {
     
     const assetRows = (workOrder?.items || []).map((item) => `
       <tr style="border-bottom: 1px solid #333;">
-        <td style="padding: 8px;">${item.asset?.tag_number || item.asset_id}</td>
+        <td style="padding: 8px;">${item.asset?.tag_number || 'N/A'}</td>
         <td style="padding: 8px;">${item.asset?.location_code || '-'}</td>
         <td style="padding: 8px;">${item.asset?.stations?.code || '-'}</td>
         <td style="padding: 8px;">${item.status}</td>
@@ -483,7 +506,7 @@ export default function WorkOrderDetailPage() {
     showToast('PDF ready - use browser print dialog', 'info');
   }
 
-  // ✅ Loading State
+  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen bg-navy-950 flex items-center justify-center">
@@ -495,7 +518,7 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  // ✅ Error State
+  // Error State
   if (!workOrder) {
     return (
       <div className="min-h-screen bg-navy-950 p-6">
@@ -556,9 +579,8 @@ export default function WorkOrderDetailPage() {
               <p className="text-navy-400 font-mono text-sm">{workOrder.work_order_number}</p>
             </div>
             
-            {/* Action Buttons Group */}
+            {/* Action Buttons */}
             <div className="flex flex-wrap gap-2">
-              {/* Export Buttons */}
               <button 
                 onClick={exportToCSV} 
                 className="inline-flex items-center gap-1 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm bg-green-900/50 text-green-400 border border-green-500/30 hover:bg-green-900/70 transition"
@@ -574,7 +596,6 @@ export default function WorkOrderDetailPage() {
                 <FileText className="w-3 h-3 md:w-4 md:h-4" aria-hidden="true" /> PDF
               </button>
               
-              {/* Delete Button - Only for Admins */}
               {canDelete && (
                 <button 
                   onClick={() => setShowDeleteConfirm(true)} 
@@ -592,7 +613,7 @@ export default function WorkOrderDetailPage() {
             <p className="text-navy-300 mb-4 border-l-2 border-amber-500 pl-3 text-sm">{workOrder.description}</p>
           )}
 
-          {/* Progress Summary Bar */}
+          {/* Progress Bar */}
           <div className="mb-6 p-4 bg-navy-800/50 rounded-lg" role="region" aria-label="Progress summary">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-navy-300">Progress</span>
@@ -607,7 +628,7 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {/* Work Order Details Grid */}
+          {/* Details Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 p-4 bg-navy-800/50 rounded-lg" role="region" aria-label="Work order details">
             <div>
               <span className="text-navy-400 text-xs block">Crew:</span> 
@@ -631,7 +652,7 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {/* Assets Table */}
+          {/* Valves Table */}
           <div className="mb-6" role="region" aria-label="Valves list">
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <Wrench className="w-4 h-4 text-amber-400" aria-hidden="true" /> 
@@ -651,9 +672,15 @@ export default function WorkOrderDetailPage() {
                 <tbody className="divide-y divide-navy-800">
                   {workOrder.items?.map((item) => (
                     <tr key={item.id} className="hover:bg-navy-800/50 transition">
-                      <td className="p-2 font-mono text-amber-400 text-xs md:text-sm">{item.asset?.tag_number || item.asset_id}</td>
-                      <td className="p-2 text-xs md:text-sm">{item.asset?.location_code || '-'}</td>
-                      <td className="p-2 text-xs md:text-sm">{item.asset?.stations?.code || '-'}</td>
+                      <td className="p-2 font-mono text-amber-400 text-xs md:text-sm">
+                        {item.asset?.tag_number || 'N/A'}
+                      </td>
+                      <td className="p-2 text-xs md:text-sm">
+                        {item.asset?.location_code || '-'}
+                      </td>
+                      <td className="p-2 text-xs md:text-sm">
+                        {item.asset?.stations?.code || '-'}
+                      </td>
                       <td className="p-2">
                         {canEdit ? (
                           <select
@@ -701,7 +728,7 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {/* END OF DAY ACTIONS - Hidden for clients */}
+          {/* End of Day Actions - Hidden for clients */}
           {!isClient && (
             <div className="border-t border-navy-700 pt-6 mt-4" role="region" aria-label="End of day actions">
               <h3 className="font-semibold mb-4 flex items-center gap-2 text-amber-400">
@@ -710,7 +737,6 @@ export default function WorkOrderDetailPage() {
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* Button 1: All Valves Done */}
                 <button
                   onClick={markAllItemsCompleted}
                   disabled={pendingCount === 0 && completedCount === totalCount}
@@ -727,7 +753,6 @@ export default function WorkOrderDetailPage() {
                   ✅ All Done
                 </button>
 
-                {/* Button 2: Partial Completion - Transfer Remaining */}
                 <button
                   onClick={rollForwardToTomorrow}
                   disabled={pendingCount === 0 || rollingForward}
@@ -746,7 +771,6 @@ export default function WorkOrderDetailPage() {
                   ⏸️ Transfer {pendingCount} Remaining
                 </button>
 
-                {/* Button 3: Early Finish - Add More Valves */}
                 <button
                   onClick={() => {
                     fetchAvailableFutureAssets();
@@ -903,7 +927,7 @@ export default function WorkOrderDetailPage() {
                         <span className="font-mono text-amber-400 text-sm truncate">{asset.tag_number}</span>
                         <span className="text-xs text-navy-400 truncate">{asset.stations?.code}</span>
                       </div>
-                      <p className="text-xs text-navy-500 truncate">From: {(asset as any).source_wo_number || 'Unknown'}</p>
+                      <p className="text-xs text-navy-500 truncate">From: {asset.source_wo_number || 'Unknown'}</p>
                     </div>
                     <span className="text-xs text-navy-400 whitespace-nowrap">{asset.location_code || '-'}</span>
                   </label>
