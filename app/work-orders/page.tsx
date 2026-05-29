@@ -1,19 +1,10 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { 
-  Plus, 
-  Search, 
-  Eye, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock,
-  Filter,
-  Calendar,
-  Users,
-  Download // ✅ Added for future CSV export integration
+  Plus, Search, Eye, AlertTriangle, CheckCircle, Clock,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,18 +19,12 @@ interface WorkOrder {
   status: string;
   assigned_crew: string | null;
   due_date: string | null;
-  scheduled_date: string | null;
-  estimated_hours: number | null;
-  actual_hours: number | null;
   created_at: string;
-  asset?: {
-    tag_number: string;
-  };
-  station?: {
-    code: string;
-    name: string;
-  };
+  asset?: { tag_number: string };
 }
+
+type SortColumn = 'work_order_number' | 'title' | 'status' | 'priority' | 'assigned_crew' | 'due_date';
+type SortDirection = 'asc' | 'desc';
 
 export default function WorkOrdersPage() {
   const router = useRouter();
@@ -48,6 +33,9 @@ export default function WorkOrdersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [sortColumn, setSortColumn] = useState<SortColumn>('due_date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [debugMsg, setDebugMsg] = useState('');
 
   useEffect(() => {
     fetchWorkOrders();
@@ -55,17 +43,17 @@ export default function WorkOrdersPage() {
 
   async function fetchWorkOrders() {
     setLoading(true);
+    setDebugMsg('Fetching...');
     try {
+      console.log('🔍 Fetching work orders...');
+      
       let query = supabase
         .from('work_orders')
         .select(`
           *,
-          asset:assets(tag_number),
-          station:stations(code, name)
+          asset:assets!inner(tag_number)
         `)
-        .is('deleted_at', null)
-        // ✅ FIX: Sort by due_date ascending (oldest first)
-        .order('due_date', { ascending: true });
+        .is('deleted_at', null);
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
@@ -75,56 +63,70 @@ export default function WorkOrdersPage() {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      setWorkOrders(data || []);
-    } catch (err) {
-      console.error('Fetch error:', err);
+      
+      if (error) {
+        console.error('❌ Error:', error);
+        setDebugMsg(`Error: ${error.message}`);
+        throw error;
+      }
+
+      console.log('✅ Fetched:', data?.length || 0, 'work orders');
+      setDebugMsg(`Loaded ${data?.length || 0} work orders`);
+      
+      // Sort client-side
+      const sorted = sortData(data || []);
+      setWorkOrders(sorted);
+      
+    } catch (err: any) {
+      console.error('🚨 Fetch failed:', err);
+      setDebugMsg(`Failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function searchWorkOrders() {
-    if (!searchTerm.trim()) {
-      fetchWorkOrders();
-      return;
-    }
+  const sortData = (data: WorkOrder[]): WorkOrder[] => {
+    return [...data].sort((a, b) => {
+      let aValue: any = a[sortColumn];
+      let bValue: any = b[sortColumn];
 
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('work_orders')
-        .select(`
-          *,
-          asset:assets(tag_number),
-          station:stations(code, name)
-        `)
-        .is('deleted_at', null)
-        .or(`title.ilike.%${searchTerm}%,work_order_number.ilike.%${searchTerm}%`)
-        // ✅ FIX: Sort search results by due_date ascending as well
-        .order('due_date', { ascending: true });
+      if (sortColumn === 'due_date' || sortColumn === 'created_at') {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
 
-      if (error) throw error;
-      setWorkOrders(data || []);
-    } catch (err) {
-      console.error('Search error:', err);
-    } finally {
-      setLoading(false);
+      if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+      if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+
+      if (sortDirection === 'asc') {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+      }
+    });
+  };
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
     }
-  }
+  };
+
+  const SortIcon = ({ column }: { column: SortColumn }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="w-3 h-3 text-amber-400" />
+      : <ArrowDown className="w-3 h-3 text-amber-400" />;
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'completed':
-        return { bg: 'bg-green-500/20', text: 'text-green-400', icon: CheckCircle, label: 'Completed' };
-      case 'in_progress':
-        return { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Clock, label: 'In Progress' };
-      case 'assigned':
-        return { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: Users, label: 'Assigned' };
-      case 'cancelled':
-        return { bg: 'bg-red-500/20', text: 'text-red-400', icon: AlertTriangle, label: 'Cancelled' };
-      default:
-        return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: Clock, label: 'Pending' };
+      case 'completed': return { bg: 'bg-green-500/20', text: 'text-green-400', icon: CheckCircle, label: 'Completed' };
+      case 'in_progress': return { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Clock, label: 'In Progress' };
+      default: return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: Clock, label: 'Pending' };
     }
   };
 
@@ -137,21 +139,28 @@ export default function WorkOrdersPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
+        <p className="text-navy-300">Loading... {debugMsg}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-navy-950 text-navy-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-navy-50">Work Orders</h1>
-            <p className="text-navy-300 mt-1">Manage maintenance jobs and crew assignments</p>
+            <p className="text-navy-300 mt-1 text-sm">{debugMsg}</p>
           </div>
           <button
             onClick={() => router.push('/work-orders/new')}
             className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition"
           >
-            <Plus className="w-4 h-4" />
-            New Work Order
+            <Plus className="w-4 h-4" /> New Work Order
           </button>
         </div>
 
@@ -163,33 +172,25 @@ export default function WorkOrdersPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-navy-400" />
                 <input
                   type="text"
-                  placeholder="Search by title or WO #..."
+                  placeholder="Search..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && searchWorkOrders()}
-                  className="w-full pl-9 pr-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm text-navy-100 focus:outline-none focus:border-amber-400"
+                  onKeyDown={(e) => e.key === 'Enter' && fetchWorkOrders()}
+                  className="w-full pl-9 pr-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm"
                 />
               </div>
             </div>
             
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-400"
-            >
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm">
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
-              <option value="assigned">Assigned</option>
               <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
             </select>
 
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-400"
-            >
+            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}
+              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm">
               <option value="all">All Priority</option>
               <option value="urgent">Urgent</option>
               <option value="high">High</option>
@@ -197,34 +198,21 @@ export default function WorkOrdersPage() {
               <option value="low">Low</option>
             </select>
 
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('all');
-                setPriorityFilter('all');
-                fetchWorkOrders();
-              }}
-              className="px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm transition"
-            >
-              Clear Filters
+            <button onClick={() => { setSearchTerm(''); setStatusFilter('all'); setPriorityFilter('all'); }}
+              className="px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm">
+              Clear
             </button>
           </div>
         </div>
 
-        {/* Work Orders Table */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
-            <p className="text-navy-300">Loading work orders...</p>
-          </div>
-        ) : workOrders.length === 0 ? (
+        {/* Table */}
+        {workOrders.length === 0 ? (
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-12 text-center">
+            <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
             <p className="text-navy-300 mb-4">No work orders found</p>
-            <button
-              onClick={() => router.push('/work-orders/new')}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg"
-            >
-              Create Your First Work Order
+            <p className="text-xs text-navy-500 mb-4">{debugMsg}</p>
+            <button onClick={fetchWorkOrders} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg">
+              Refresh
             </button>
           </div>
         ) : (
@@ -233,12 +221,15 @@ export default function WorkOrdersPage() {
               <table className="w-full">
                 <thead className="bg-navy-800 border-b border-navy-700">
                   <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">WO #</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Title</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Status</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Priority</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Crew</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Due Date</th>
+                    {(['work_order_number', 'title', 'status', 'priority', 'assigned_crew', 'due_date'] as SortColumn[]).map((col) => (
+                      <th key={col} onClick={() => handleSort(col)}
+                        className="text-left px-4 py-3 text-sm font-medium text-navy-300 cursor-pointer hover:bg-navy-700 transition">
+                        <div className="flex items-center gap-2">
+                          {col.replace('_', ' ').toUpperCase()}
+                          <SortIcon column={col} />
+                        </div>
+                      </th>
+                    ))}
                     <th className="text-left px-4 py-3 text-sm font-medium text-navy-300"></th>
                   </tr>
                 </thead>
@@ -247,36 +238,24 @@ export default function WorkOrdersPage() {
                     const statusConfig = getStatusBadge(wo.status);
                     const StatusIcon = statusConfig.icon;
                     return (
-                      <tr key={wo.id} className="hover:bg-navy-800/50 transition-colors">
-                        <td className="px-4 py-3 font-mono text-sm text-amber-400">
-                          {wo.work_order_number}
-                        </td>
+                      <tr key={wo.id} className="hover:bg-navy-800/50">
+                        <td className="px-4 py-3 font-mono text-sm text-amber-400">{wo.work_order_number}</td>
                         <td className="px-4 py-3 text-navy-100">
                           {wo.title}
-                          {wo.asset?.tag_number && (
-                            <p className="text-xs text-navy-400">Asset: {wo.asset.tag_number}</p>
-                          )}
+                          {wo.asset?.tag_number && <p className="text-xs text-navy-400">Asset: {wo.asset.tag_number}</p>}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${statusConfig.bg} ${statusConfig.text}`}>
-                            <StatusIcon className="w-3 h-3" />
-                            {statusConfig.label}
+                            <StatusIcon className="w-3 h-3" /> {statusConfig.label}
                           </span>
                         </td>
                         <td className={`px-4 py-3 text-sm font-medium ${getPriorityColor(wo.priority)}`}>
                           {wo.priority?.toUpperCase()}
                         </td>
-                        <td className="px-4 py-3 text-navy-300">
-                          {wo.assigned_crew || 'Unassigned'}
-                        </td>
-                        <td className="px-4 py-3 text-navy-300">
-                          {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : '-'}
-                        </td>
+                        <td className="px-4 py-3 text-navy-300">{wo.assigned_crew || 'Unassigned'}</td>
+                        <td className="px-4 py-3 text-navy-300">{wo.due_date ? new Date(wo.due_date).toLocaleDateString() : '-'}</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => router.push(`/work-orders/${wo.id}`)}
-                            className="p-1 text-navy-400 hover:text-amber-400 transition"
-                          >
+                          <button onClick={() => router.push(`/work-orders/${wo.id}`)} className="p-1 text-navy-400 hover:text-amber-400">
                             <Eye className="w-4 h-4" />
                           </button>
                         </td>
