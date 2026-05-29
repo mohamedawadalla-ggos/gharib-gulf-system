@@ -1,10 +1,14 @@
 // app/assets/page.tsx
 'use client';
-
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { AssetFilters } from './_components/asset-filters';
 import { AssetTable } from './_components/asset-table';
+
+// ✅ ADD THESE IMPORTS AT THE TOP
+import { Download } from 'lucide-react';
+import { downloadCSV } from '@/lib/export-csv';
+import { useToast } from '@/hooks/useToast';
 
 // 1. Initialize Supabase Client
 const supabase = createClient(
@@ -26,21 +30,21 @@ export default function AssetsPage() {
   const [stations, setStations] = useState<any[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [criticalities, setCriticalities] = useState<string[]>([]);
-  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  
   const [filters, setFilters] = useState({
     search: '',
     status: 'all',
     station: 'all',
     criticality: 'all'
   });
-
+  
   const limit = 20;
+  
+  // ✅ ADD THIS HOOK
+  const { showToast } = useToast();
 
   // 4. Initial Data Fetching
   useEffect(() => {
@@ -61,7 +65,6 @@ export default function AssetsPage() {
   }, [currentPage, filters, allAssets]);
 
   // --- Data Fetching Functions ---
-
   async function fetchStations() {
     try {
       const { data, error } = await supabase
@@ -69,7 +72,7 @@ export default function AssetsPage() {
         .select('id, code, name')
         .is('deleted_at', null)
         .order('code');
-      
+
       if (error) throw error;
       setStations(data || []);
     } catch (err: any) {
@@ -81,10 +84,10 @@ export default function AssetsPage() {
     try {
       // ✅ Fetching from 'assets_clean' view to avoid timestamp errors
       const { data, error } = await supabase
-        .from('assets_clean') 
+        .from('assets_clean')
         .select('maintenance_status, criticality')
         .limit(500);
-      
+
       if (error) throw error;
       
       if (data) {
@@ -99,7 +102,6 @@ export default function AssetsPage() {
   async function fetchAllAssets() {
     setLoading(true);
     setError(null);
-    
     try {
       let allData: any[] = [];
       let offset = 0;
@@ -138,7 +140,6 @@ export default function AssetsPage() {
   }
 
   // --- Client-Side Logic ---
-
   function applyFiltersAndPaginate() {
     let filtered = [...allAssets];
     
@@ -169,8 +170,23 @@ export default function AssetsPage() {
     setCurrentPage(1);
   };
 
-  // --- UI Rendering ---
+  // ✅ ADD THIS EXPORT FUNCTION
+  const handleExport = () => {
+    // Export the currently filtered data (assets state)
+    // Note: If you want to export ALL data regardless of pagination, use 'allAssets'
+    const dataToExport = allAssets.map(a => ({
+      Tag: a.tag_number,
+      Location: a.location_code,
+      Status: a.maintenance_status,
+      Criticality: a.criticality,
+      Condition: a.condition
+    }));
+    
+    downloadCSV(dataToExport, 'asset_registry');
+    showToast(`Exported ${dataToExport.length} assets`, 'success');
+  };
 
+  // --- UI Rendering ---
   if (loading && assets.length === 0) {
     return (
       <div className="min-h-screen bg-navy-950 flex items-center justify-center text-navy-300">
@@ -198,10 +214,23 @@ export default function AssetsPage() {
     <div className="min-h-screen bg-navy-950 text-navy-50 p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-navy-50">Asset Registry</h1>
-        <p className="text-navy-300 mt-1">
-          Manage valves across {stations.length} stations
-        </p>
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-navy-50">Asset Registry</h1>
+            <p className="text-navy-300 mt-1">
+              Manage valves across {stations.length} stations
+            </p>
+          </div>
+          
+          {/* ✅ ADD EXPORT BUTTON HERE */}
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm text-navy-200 transition-colors"
+          >
+            <Download className="w-4 h-4 text-amber-400" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
