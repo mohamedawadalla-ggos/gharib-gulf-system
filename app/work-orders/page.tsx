@@ -12,7 +12,8 @@ import {
   Clock,
   Filter,
   Calendar,
-  Users
+  Users,
+  Download // ✅ Added for future CSV export integration
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -63,7 +64,8 @@ export default function WorkOrdersPage() {
           station:stations(code, name)
         `)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+        // ✅ FIX: Sort by due_date ascending (oldest first)
+        .order('due_date', { ascending: true });
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
@@ -99,7 +101,8 @@ export default function WorkOrdersPage() {
         `)
         .is('deleted_at', null)
         .or(`title.ilike.%${searchTerm}%,work_order_number.ilike.%${searchTerm}%`)
-        .order('created_at', { ascending: false });
+        // ✅ FIX: Sort search results by due_date ascending as well
+        .order('due_date', { ascending: true });
 
       if (error) throw error;
       setWorkOrders(data || []);
