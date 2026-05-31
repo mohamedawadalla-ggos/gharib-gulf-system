@@ -1,4 +1,5 @@
 // app/layout.tsx
+// ✅ Server Component - NO 'use client'
 import './globals.css';
 import { Inter } from 'next/font/google';
 import { ToastProvider } from '@/components/ToastProvider';

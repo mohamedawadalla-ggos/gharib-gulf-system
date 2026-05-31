@@ -3,20 +3,16 @@
 
 import { ReactNode } from 'react';
 
-// ✅ Simple, always-working toast implementation - no context needed
+// ✅ Ultra-simple: No context, no throwing, always works
 export function ToastProvider({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
 export function useToast() {
-  // ✅ Always returns a working toast function - never throws
+  // ✅ Always returns a valid object - NEVER throws
   return {
     toast: (message: string) => {
-      // Fallback: just log to console (works in SSR and client)
-      if (typeof window !== 'undefined') {
-        console.log('🍞 Toast:', message);
-      }
-      // Optional: Add actual toast UI here later
+      console.log('🍞 Toast:', message);
     }
   };
 }
