@@ -1,15 +1,7 @@
 // app/assets/page.tsx
 'use client';
 
-// app/assets/page.tsx
-export const dynamic = 'force-dynamic';
-import AssetsPageClient from './page-client';
-
-export default function AssetsPage() {
-  return <AssetsPageClient />;
-}
-
-// ✅ Force dynamic rendering - skip static generation to bypass SSR toast error
+// ✅ Force dynamic rendering - skip static generation to bypass SSR errors
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -43,7 +35,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function AssetsPage() {
   const router = useRouter();
- 
+  
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -259,7 +251,8 @@ export default function AssetsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-navy-300">{asset.manufacturer || 'Unknown'}</td>
-                        <td className={`px-4 py-3 text-sm font-medium ${getServiceColor(asset.service_type || '')}`}>                          {asset.service_type?.toUpperCase() || 'N/A'}
+                        <td className={`px-4 py-3 text-sm font-medium ${getServiceColor(asset.service_type || '')}`}>
+                          {asset.service_type?.toUpperCase() || 'N/A'}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded text-xs capitalize ${
