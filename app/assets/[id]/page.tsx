@@ -1,28 +1,16 @@
-// app/assets/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+// ✅ Use your shared client to prevent duplicate instances
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'; 
 import { 
-  ArrowLeft, 
-  Wrench, 
-  Calendar, 
-  AlertTriangle, 
-  CheckCircle, 
-  MapPin, 
-  Server,
-  Info,
-  Clock,
-  Camera,
-  Download,
-  X
+  ArrowLeft, Wrench, Calendar, AlertTriangle, CheckCircle, 
+  MapPin, Server, Info, Clock, Camera, Download, X 
 } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// ✅ Use the shared client
+const supabase = createSupabaseBrowserClient();
 
 interface AssetDetail {
   id: string;
