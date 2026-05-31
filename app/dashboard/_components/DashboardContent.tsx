@@ -1,3 +1,4 @@
+// app/dashboard/_components/DashboardContent.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -13,7 +14,42 @@ import DashboardCharts from '@/components/DashboardCharts';
 
 const supabase = createSupabaseBrowserClient();
 
-// === Types ===
+// === TypeScript Interfaces ===
+interface ValveDetails {
+  actuator_type: string | null;
+  valve_type: string | null;
+}
+
+interface Asset {
+  id: string;
+  tag_number: string;
+  location_code: string | null;
+  detailed_location: string | null;
+  parent_well_name: string | null;
+  manufacturer: string | null;
+  service_type: string | null;
+  sct_code: string | null;
+  condition: string | null;
+  maintenance_status: string | null;
+  repair_status: string | null;
+  company_id: string | null;
+  valve_details?: ValveDetails | null;
+}
+
+interface WorkOrder {
+  id: string;
+  asset_id: string | null;
+  status: string;
+  due_date: string | null;
+  company_id: string | null;
+  asset_name?: string;
+}
+
+interface Campaign {
+  id: string;
+  status: string;
+}
+
 interface DashboardKPIs {
   total_assets: number;
   unique_locations: number;
@@ -36,9 +72,9 @@ interface DashboardKPIs {
 }
 
 interface DashboardData {
-  assets: any[];
-  workOrders: any[];
-  campaigns: any[];
+  assets: Asset[];
+  workOrders: WorkOrder[];
+  campaigns: Campaign[];
   kpis: DashboardKPIs;
 }
 
@@ -60,7 +96,7 @@ export default function DashboardContent() {
     try {
       console.log('🔍 Starting dashboard fetch...');
 
-      // Join assets with valve_details
+      // Fetch assets with valve_details join
       const assetsRes = await supabase
         .from('assets')
         .select(`
@@ -78,24 +114,24 @@ export default function DashboardContent() {
       if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
       if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
 
-      let assets = assetsRes.data || [];
-      let workOrders = woRes.data || [];
-      const campaigns = campRes.data || [];
+      let assets = assetsRes.data as Asset[] || [];
+      let workOrders = woRes.data as WorkOrder[] || [];
+      const campaigns = campRes.data as Campaign[] || [];
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
-        details_found: assets.filter(a => a.valve_details).length
+        details_found: assets.filter((a: Asset) => a.valve_details).length
       });
 
       // Client-side filtering for clients
       if (isClient && companyCode) {
-        assets = assets.filter((a: any) => a.company_id === companyCode);
-        workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
+        assets = assets.filter((a: Asset) => a.company_id === companyCode);
+        workOrders = workOrders.filter((wo: WorkOrder) => wo.company_id === companyCode);
       }
 
-      // Helper to count actuator types
-      const countActuator = (keyword: string) => {
-        return assets.filter(a => {
+      // Helper to count actuator types - ✅ Fixed TypeScript
+      const countActuator = (keyword: string): number => {
+        return assets.filter((a: Asset): boolean => {
           const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
           return type.includes(keyword);
         }).length;
@@ -104,19 +140,19 @@ export default function DashboardContent() {
       // KPI Calculations
       const kpis: DashboardKPIs = {
         total_assets: assets.length,
-        unique_locations: new Set(assets.map((a: any) =>
+        unique_locations: new Set(assets.map((a: Asset): string => 
           (a.location_code || a.detailed_location || a.parent_well_name || 'Unknown').replace(/^-+/, '').trim()
         )).size,
-        unique_manufacturers: new Set(assets.map((a: any) => a.manufacturer || 'Unknown')).size,
+        unique_manufacturers: new Set(assets.map((a: Asset): string => a.manufacturer || 'Unknown')).size,
         
         // Service Type
-        oil_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('oil')).length,
-        water_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('water')).length,
-        gas_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('gas')).length,
-        diesel_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('diesel')).length,
+        oil_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('oil')).length,
+        water_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('water')).length,
+        gas_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('gas')).length,
+        diesel_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('diesel')).length,
         
-        // Wellhead check (matches SCT code containing 'Wellhead')
-        wellhead_valves: assets.filter(a => (a.sct_code || '').toLowerCase().includes('wellhead')).length,
+        // Wellhead check
+        wellhead_valves: assets.filter((a: Asset): boolean => (a.sct_code || '').toLowerCase().includes('wellhead')).length,
         
         // Actuation types
         bar_stem: countActuator('bar'),
@@ -126,25 +162,25 @@ export default function DashboardContent() {
         manual: countActuator('manual'),
         
         // Service status
-        good_for_service: assets.filter((a: any) =>
+        good_for_service: assets.filter((a: Asset): boolean => 
           a.condition === 'good' || a.maintenance_status === 'up_to_date' || a.repair_status === 'none'
         ).length,
         
         // Work orders
-        overdue_work_orders: workOrders.filter((wo: any) =>
+        overdue_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
           wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
         ).length,
-        pending_work_orders: workOrders.filter((wo: any) =>
+        pending_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
           ['pending', 'assigned', 'in_progress'].includes(wo.status)
         ).length,
-        completed_work_orders: workOrders.filter((wo: any) => wo.status === 'completed').length,
-        active_campaigns: campaigns.filter((c: any) => c.status === 'active').length
+        completed_work_orders: workOrders.filter((wo: WorkOrder): boolean => wo.status === 'completed').length,
+        active_campaigns: campaigns.filter((c: Campaign): boolean => c.status === 'active').length
       };
 
       console.log('📊 KPIs:', kpis);
       setDashboardData({ assets, workOrders, campaigns, kpis });
     } catch (err: any) {
-      console.error(' Dashboard Error:', err.message || err);
+      console.error('🚨 Dashboard Error:', err.message || err);
       setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -278,8 +314,8 @@ export default function DashboardContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-800">
-                {(workOrders || []).slice(0, 5).map((wo: any) => {
-                  const asset = assets.find((a: any) => a.id === wo.asset_id);
+                {(workOrders || []).slice(0, 5).map((wo: WorkOrder) => {
+                  const asset = assets.find((a: Asset): boolean => a.id === wo.asset_id);
                   const tagNumber = asset?.tag_number || wo.asset_name || wo.asset_id?.slice(0, 12) || 'N/A';
                   return (
                     <tr key={wo.id} className="hover:bg-navy-800/50 transition">
@@ -317,7 +353,7 @@ export default function DashboardContent() {
 }
 
 // === Subcomponents ===
-function StatBadge({ icon, label, value, color }: any) {
+function StatBadge({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number | string; color: string }) {
   const colors: Record<string, string> = {
     amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -335,7 +371,7 @@ function StatBadge({ icon, label, value, color }: any) {
   );
 }
 
-function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: any) {
+function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: { title: string; value: number | string; subtitle: string; icon: React.ReactNode; color: string; alert?: boolean; trend?: 'up' | 'neutral' }) {
   const colorClasses: Record<string, string> = {
     amber: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
     red: 'bg-red-500/10 border-red-500/20 text-red-400',
@@ -355,7 +391,7 @@ function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: 
   );
 }
 
-function ApplicationBar({ label, value, total, color }: any) {
+function ApplicationBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div>
@@ -370,7 +406,7 @@ function ApplicationBar({ label, value, total, color }: any) {
   );
 }
 
-function ActuationItem({ label, value, total }: any) {
+function ActuationItem({ label, value, total }: { label: string; value: number; total: number }) {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div className="flex justify-between items-center py-2 border-b border-navy-800 last:border-0">
@@ -383,7 +419,7 @@ function ActuationItem({ label, value, total }: any) {
   );
 }
 
-function StatusBadge({ status }: any) {
+function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     completed: 'bg-green-500/20 text-green-400',
     in_progress: 'bg-blue-500/20 text-blue-400',
@@ -394,7 +430,7 @@ function StatusBadge({ status }: any) {
   return <span className={`px-2 py-1 rounded text-xs capitalize ${styles[status] || 'bg-navy-700 text-navy-300'}`}>{status?.replace('_', ' ') || 'N/A'}</span>;
 }
 
-function QuickAction({ href, icon, label, color }: any) {
+function QuickAction({ href, icon, label, color }: { href: string; icon: React.ReactNode; label: string; color: string }) {
   const colors: Record<string, string> = {
     amber: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20',
     blue: 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border-blue-500/20',
