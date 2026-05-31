@@ -1,3 +1,4 @@
+// app/assets/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -12,7 +13,10 @@ import {
   MapPin, 
   Server,
   Info,
-  Clock
+  Clock,
+  Camera,
+  Download,
+  X
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -46,12 +50,26 @@ interface AssetDetail {
   } | null;
 }
 
+interface AssetPhoto {
+  id: string;
+  asset_id: string;
+  image_url: string;
+  public_url: string;
+  image_type: string;
+  captured_gps_lat: number | null;
+  captured_gps_lng: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export default function AssetDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [asset, setAsset] = useState<AssetDetail | null>(null);
+  const [photos, setPhotos] = useState<AssetPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<AssetPhoto | null>(null);
 
   useEffect(() => {
     fetchAssetDetail();
@@ -62,7 +80,7 @@ export default function AssetDetailPage() {
     setError(null);
     
     try {
-      // First, get the asset from assets_clean (no date fields)
+      // 1. Get the asset from assets_clean
       const { data: assetData, error: assetError } = await supabase
         .from('assets_clean')
         .select('*')
@@ -71,7 +89,7 @@ export default function AssetDetailPage() {
 
       if (assetError) throw assetError;
 
-      // Get date fields separately from main assets table
+      // 2. Get date fields separately from main assets table
       const { data: dateData, error: dateError } = await supabase
         .from('assets')
         .select('last_service_date, next_service_date, installation_date, notes')
@@ -82,7 +100,7 @@ export default function AssetDetailPage() {
         console.error('Date fetch error:', dateError);
       }
 
-      // Get station info
+      // 3. Get station info
       let stationInfo = null;
       if (assetData.station_id) {
         const { data: stationData } = await supabase
@@ -100,7 +118,7 @@ export default function AssetDetailPage() {
         }
       }
 
-      // Combine all data
+      // 4. Combine asset data
       const combinedAsset: AssetDetail = {
         id: assetData.id,
         tag_number: assetData.tag_number,
@@ -124,11 +142,47 @@ export default function AssetDetailPage() {
       };
 
       setAsset(combinedAsset);
+
+      // 5. Fetch photos for this asset
+      await fetchAssetPhotos(assetData.id);
+
     } catch (err: any) {
       console.error('Error fetching asset:', err);
       setError(err.message || 'Failed to load asset details');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchAssetPhotos(assetId: string) {
+    try {
+      const { data: photoData, error: photoError } = await supabase
+        .from('asset_images')
+        .select('*')
+        .eq('asset_id', assetId)
+        .order('created_at', { ascending: false });
+
+      if (photoError) {
+        console.error('Photo fetch error:', photoError);
+        return;
+      }
+
+      // Get public URLs for each photo
+      const photosWithUrls = await Promise.all(
+        (photoData || []).map(async (photo) => {
+          const { data } = supabase.storage
+            .from('valve-photos')
+            .getPublicUrl(photo.image_url);
+          return { 
+            ...photo, 
+            public_url: data.publicUrl 
+          } as AssetPhoto;
+        })
+      );
+      
+      setPhotos(photosWithUrls);
+    } catch (err) {
+      console.error('Error processing photos:', err);
     }
   }
 
@@ -284,7 +338,7 @@ export default function AssetDetailPage() {
               </div>
             </div>
 
-            {/* Maintenance History */}
+            {/* Maintenance Schedule */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
               <h2 className="text-lg font-semibold text-navy-100 mb-4 flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-amber-400" />
@@ -316,6 +370,92 @@ export default function AssetDetailPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* 📸 NEW: Photo Gallery Section */}
+            <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
+              <h2 className="text-lg font-semibold text-navy-100 mb-4 flex items-center gap-2">
+                <Camera className="w-5 h-5 text-amber-400" />
+                Maintenance Photos ({photos.length})
+              </h2>
+
+              {photos.length === 0 ? (
+                <div className="text-center py-8 text-navy-400 border-2 border-dashed border-navy-700 rounded-lg">
+                  <Camera className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No photos uploaded yet</p>
+                  <p className="text-xs mt-1">Photos appear here after mobile task completion</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {photos.map((photo) => (
+                    <div 
+                      key={photo.id} 
+                      className="bg-navy-800 rounded-lg overflow-hidden border border-navy-700 group hover:border-amber-500/50 transition-colors"
+                    >
+                      {/* Photo Image - Click to Open Lightbox */}
+                      <div 
+                        className="relative cursor-pointer aspect-video bg-navy-950"
+                        onClick={() => setSelectedPhoto(photo)}
+                      >
+                        <img 
+                          src={photo.public_url} 
+                          alt={photo.image_type || 'Maintenance photo'}
+                          className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect fill="%231e293b" width="400" height="300"/%3E%3Ctext fill="%2364748b" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not found%3C/text%3E%3C/svg%3E';
+                          }}
+                        />
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white text-sm font-medium flex items-center gap-2">
+                            <Download className="w-4 h-4" /> View Full Size
+                          </span>
+                        </div>
+                        {/* Type Badge */}
+                        {photo.image_type && (
+                          <span className="absolute top-2 left-2 px-2 py-1 bg-amber-500/90 text-navy-950 text-xs font-bold rounded">
+                            {photo.image_type.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Photo Metadata */}
+                      <div className="p-4 space-y-3">
+                        {/* Date & Time */}
+                        <div className="flex items-center gap-2 text-xs text-navy-400">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {new Date(photo.created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                        
+                        {/* GPS Coordinates */}
+                        {photo.captured_gps_lat && photo.captured_gps_lng && (
+                          <div className="flex items-center gap-2 text-xs text-navy-400">
+                            <MapPin className="w-3 h-3" />
+                            <span className="font-mono">
+                              {photo.captured_gps_lat.toFixed(5)}, {photo.captured_gps_lng.toFixed(5)}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Notes */}
+                        {photo.notes && (
+                          <p className="text-sm text-navy-300 leading-relaxed border-t border-navy-700 pt-2">
+                            {photo.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -373,6 +513,68 @@ export default function AssetDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* 📸 Photo Lightbox Modal */}
+      {selectedPhoto && (
+        <div 
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          {/* Close Button */}
+          <button
+            onClick={() => setSelectedPhoto(null)}
+            className="absolute top-4 right-4 p-2 bg-navy-800 hover:bg-navy-700 rounded-full text-white transition-colors z-10"
+            aria-label="Close"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* Photo Container */}
+          <div className="relative max-w-5xl w-full max-h-[90vh] flex flex-col">
+            {/* Image */}
+            <img 
+              src={selectedPhoto.public_url} 
+              alt={selectedPhoto.image_type || 'Full size photo'}
+              className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            
+            {/* Photo Info Bar */}
+            <div className="mt-4 bg-navy-900/90 rounded-lg p-4 border border-navy-700">
+              <div className="flex flex-wrap justify-between items-start gap-4">
+                <div className="space-y-2">
+                  <p className="text-sm text-navy-300">
+                    <span className="text-navy-500">Captured:</span>{' '}
+                    {new Date(selectedPhoto.created_at).toLocaleString()}
+                  </p>
+                  {selectedPhoto.captured_gps_lat && selectedPhoto.captured_gps_lng && (
+                    <p className="text-sm text-navy-300 font-mono">
+                      <span className="text-navy-500">GPS:</span>{' '}
+                      {selectedPhoto.captured_gps_lat.toFixed(5)}, {selectedPhoto.captured_gps_lng.toFixed(5)}
+                    </p>
+                  )}
+                  {selectedPhoto.notes && (
+                    <p className="text-sm text-navy-300">
+                      <span className="text-navy-500">Notes:</span> {selectedPhoto.notes}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Download Button */}
+                <a
+                  href={selectedPhoto.public_url}
+                  download={`valve-${asset?.tag_number}-${new Date(selectedPhoto.created_at).toISOString().split('T')[0]}.jpg`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download className="w-4 h-4" />
+                  Download Photo
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
