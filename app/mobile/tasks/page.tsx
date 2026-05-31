@@ -53,17 +53,25 @@ export default function MobileTasksPage() {
 
 async function fetchTasks() {
   setLoading(true);
+  setError(null);
+  
   try {
-    // Get today's assigned tasks for mobile users
     const today = new Date().toISOString().split('T')[0];
     
-    const { data, error } = await supabase
+    console.log('🔍 Fetching mobile tasks for date:', today);
+    
+    // ✅ Fetch from work_order_items (not assets directly!)
+    const { data: itemsData, error: itemsError } = await supabase
       .from('work_order_items')
       .select(`
         id,
         status,
         notes,
-        asset:assets_clean (
+        asset_id,
+        work_order_id,
+        completed_at,
+        created_at,
+        asset:assets_clean!inner (
           id,
           tag_number,
           location_code,
@@ -72,29 +80,30 @@ async function fetchTasks() {
           condition,
           stations (code)
         ),
-        work_order:work_orders (
+        work_order:work_orders!inner (
           id,
           priority,
           due_date,
-          assigned_crew
+          assigned_crew,
+          status as wo_status
         )
       `)
       .eq('status', 'pending')
-      .lte('work_order.due_date', today);  // ✅ Fixed: use work_order (alias), not work_orders
+      .lte('work_order.due_date', today)
+      .order('work_order.due_date', { ascending: true });
 
-    if (error) throw error;
+    if (itemsError) {
+      console.error('❌ Work order items error:', itemsError);
+      throw itemsError;
+    }
 
-    // ✅ Sort client-side instead of in query
-    const sortedData = (data || []).sort((a: any, b: any) => {
-      const dateA = a.work_order?.due_date || '';
-      const dateB = b.work_order?.due_date || '';
-      return dateA.localeCompare(dateB);
-    });
+    console.log('✅ Fetched work order items:', itemsData?.length || 0);
 
-    const formattedTasks: Task[] = sortedData.map((item: any) => ({
+    // Format the data
+    const formattedTasks: Task[] = (itemsData || []).map((item: any) => ({
       id: item.id,
-      asset_id: item.asset?.id,
-      work_order_id: item.work_order?.id,
+      asset_id: item.asset_id,
+      work_order_id: item.work_order_id,
       assigned_to: item.work_order?.assigned_crew,
       status: item.status,
       due_date: item.work_order?.due_date,
@@ -111,15 +120,16 @@ async function fetchTasks() {
       }
     }));
 
+    console.log('📋 Formatted tasks:', formattedTasks.length);
     setTasks(formattedTasks);
+    
   } catch (err: any) {
-    console.error('Error fetching tasks:', err);
-    setError('Failed to load tasks. Please refresh.');
+    console.error('🚨 Error fetching tasks:', err);
+    setError(err.message || 'Failed to load tasks. Please refresh.');
   } finally {
     setLoading(false);
   }
 }
-
   function requestLocation() {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
