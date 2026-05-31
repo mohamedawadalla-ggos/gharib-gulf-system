@@ -1,16 +1,32 @@
+// app/assets/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-// ✅ Use your shared client to prevent duplicate instances
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'; 
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { 
-  ArrowLeft, Wrench, Calendar, AlertTriangle, CheckCircle, 
-  MapPin, Server, Info, Clock, Camera, Download, X 
+  ArrowLeft, 
+  Wrench, 
+  Calendar, 
+  AlertTriangle, 
+  CheckCircle, 
+  MapPin, 
+  Server,
+  Info,
+  Clock,
+  Camera,
+  Download,
+  X
 } from 'lucide-react';
 
-// ✅ Use the shared client
 const supabase = createSupabaseBrowserClient();
+
+// === TypeScript Interfaces ===
+interface Station {
+  code: string;
+  name: string;
+  location_code: string | null;
+}
 
 interface AssetDetail {
   id: string;
@@ -31,19 +47,15 @@ interface AssetDetail {
   serial_number: string | null;
   installation_date: string | null;
   notes: string | null;
-  stations: {
-    code: string;
-    name: string;
-    location_code: string | null;
-  } | null;
+  stations: Station | null;
 }
 
-interface AssetPhoto {
+interface AssetImage {
   id: string;
   asset_id: string;
   image_url: string;
   public_url: string;
-  image_type: string;
+  image_type: string | null;
   captured_gps_lat: number | null;
   captured_gps_lng: number | null;
   notes: string | null;
@@ -54,13 +66,15 @@ export default function AssetDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [asset, setAsset] = useState<AssetDetail | null>(null);
-  const [photos, setPhotos] = useState<AssetPhoto[]>([]);
+  const [photos, setPhotos] = useState<AssetImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<AssetPhoto | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<AssetImage | null>(null);
 
   useEffect(() => {
-    fetchAssetDetail();
+    if (params.id) {
+      fetchAssetDetail();
+    }
   }, [params.id]);
 
   async function fetchAssetDetail() {
@@ -78,19 +92,15 @@ export default function AssetDetailPage() {
       if (assetError) throw assetError;
 
       // 2. Get date fields separately from main assets table
-      const { data: dateData, error: dateError } = await supabase
+      const { data: dateData } = await supabase
         .from('assets')
         .select('last_service_date, next_service_date, installation_date, notes')
         .eq('id', params.id)
         .single();
 
-      if (dateError && dateError.code !== 'PGRST116') {
-        console.error('Date fetch error:', dateError);
-      }
-
       // 3. Get station info
-      let stationInfo = null;
-      if (assetData.station_id) {
+      let stationInfo: Station | null = null;
+      if (assetData?.station_id) {
         const { data: stationData } = await supabase
           .from('stations')
           .select('code, name')
@@ -155,16 +165,25 @@ export default function AssetDetailPage() {
         return;
       }
 
-      // Get public URLs for each photo
+      // Get public URLs for each photo - ✅ Fixed TypeScript type
       const photosWithUrls = await Promise.all(
-        (photoData || []).map(async (photo) => {
+        (photoData || []).map(async (photo: {
+          id: string;
+          asset_id: string;
+          image_url: string;
+          image_type: string | null;
+          captured_gps_lat: number | null;
+          captured_gps_lng: number | null;
+          notes: string | null;
+          created_at: string;
+        }) => {
           const { data } = supabase.storage
             .from('valve-photos')
             .getPublicUrl(photo.image_url);
           return { 
             ...photo, 
             public_url: data.publicUrl 
-          } as AssetPhoto;
+          } as AssetImage;
         })
       );
       
@@ -360,7 +379,7 @@ export default function AssetDetailPage() {
               </div>
             </div>
 
-            {/* 📸 NEW: Photo Gallery Section */}
+            {/* 📸 Photo Gallery Section */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
               <h2 className="text-lg font-semibold text-navy-100 mb-4 flex items-center gap-2">
                 <Camera className="w-5 h-5 text-amber-400" />
