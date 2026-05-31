@@ -125,7 +125,7 @@ export default function AssetsPage() {
     }
   };
 
-  const getServiceColor = (service: string) => {
+  const getServiceColor = (service: string | null) => {
     switch (service?.toLowerCase()) {
       case 'oil': return 'text-amber-400';
       case 'water': return 'text-blue-400';
@@ -252,8 +252,7 @@ export default function AssetsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-navy-300">{asset.manufacturer || 'Unknown'}</td>
-                        <td className={`px-4 py-3 text-sm font-medium ${getServiceColor(asset.service_type)}`}>
-                          {asset.service_type?.toUpperCase() || 'N/A'}
+                        <td className={`px-4 py-3 text-sm font-medium ${getServiceColor(asset.service_type || '')}`}>                          {asset.service_type?.toUpperCase() || 'N/A'}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded text-xs capitalize ${
