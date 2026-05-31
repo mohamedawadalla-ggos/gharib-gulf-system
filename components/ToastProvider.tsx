@@ -1,18 +1,16 @@
 // components/ToastProvider.tsx
-'use client';
+// ✅ NO 'use client' - works in SSR and static generation
+// ✅ NO context - never throws, always returns valid object
 
-import { ReactNode } from 'react';
-
-// ✅ Ultra-simple: No context, no throwing, always works
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export function useToast() {
-  // ✅ Always returns a valid object - NEVER throws
-  return {
-    toast: (message: string) => {
+export const useToast = () => ({
+  toast: (message: string) => {
+    // No-op during SSR, console.log in browser
+    if (typeof window !== 'undefined') {
       console.log('🍞 Toast:', message);
     }
-  };
-}
+  }
+});
