@@ -1,6 +1,14 @@
 // app/assets/page.tsx
 'use client';
 
+// app/assets/page.tsx
+export const dynamic = 'force-dynamic';
+import AssetsPageClient from './page-client';
+
+export default function AssetsPage() {
+  return <AssetsPageClient />;
+}
+
 // ✅ Force dynamic rendering - skip static generation to bypass SSR toast error
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +43,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function AssetsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  
+ 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
