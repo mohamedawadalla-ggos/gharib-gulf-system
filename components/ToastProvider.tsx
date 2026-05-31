@@ -12,9 +12,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = (message: string) => {
     console.log('🍞 Toast:', message);
-    // Optional: Add actual toast UI here later
   };
-
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
@@ -24,7 +22,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 export function useToast() {
   const context = useContext(ToastContext);
-  // ✅ Return a no-op fallback instead of throwing - works during SSR/static generation
+  // ✅ Return fallback instead of throwing - works during SSR/static generation
   if (!context) {
     return {
       toast: (message: string) => {
