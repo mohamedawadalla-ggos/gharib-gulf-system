@@ -1,8 +1,8 @@
 // app/layout.tsx
-// ✅ Server Component - NO 'use client'
 import './globals.css';
 import { Inter } from 'next/font/google';
 import { ToastProvider } from '@/components/ToastProvider';
+import Navbar from '@/components/Navbar';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -20,7 +20,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ToastProvider>
-          {children}
+          <Navbar />
+          <main className="min-h-screen bg-navy-950">
+            {children}
+          </main>
         </ToastProvider>
       </body>
     </html>
