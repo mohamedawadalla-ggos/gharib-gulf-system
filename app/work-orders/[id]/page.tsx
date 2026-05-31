@@ -42,7 +42,7 @@ interface WorkOrder {
   estimated_hours: number | null;
   actual_hours: number | null;
   notes: string | null;
-  completed_date?: string | null;  // ✅ Added for completed work orders
+  completed_date?: string | null;
   items?: WorkOrderItem[];
 }
 
