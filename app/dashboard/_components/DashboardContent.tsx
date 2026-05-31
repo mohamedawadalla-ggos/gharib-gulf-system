@@ -96,7 +96,6 @@ export default function DashboardContent() {
     try {
       console.log('🔍 Starting dashboard fetch...');
 
-      // Fetch assets with valve_details join
       const assetsRes = await supabase
         .from('assets')
         .select(`
@@ -120,7 +119,7 @@ export default function DashboardContent() {
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
-        details_found: assets.filter((a: Asset) => a.valve_details).length
+        details_found: assets.filter((a: Asset) => !!a.valve_details).length
       });
 
       // Client-side filtering for clients
@@ -133,11 +132,11 @@ export default function DashboardContent() {
       const countActuator = (keyword: string): number => {
         return assets.filter((a: Asset): boolean => {
           const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
-          return type.includes(keyword);
+          return !!type.includes(keyword);
         }).length;
       };
 
-      // KPI Calculations
+      // KPI Calculations - ✅ All filters now return explicit boolean
       const kpis: DashboardKPIs = {
         total_assets: assets.length,
         unique_locations: new Set(assets.map((a: Asset): string => 
@@ -145,14 +144,24 @@ export default function DashboardContent() {
         )).size,
         unique_manufacturers: new Set(assets.map((a: Asset): string => a.manufacturer || 'Unknown')).size,
         
-        // Service Type
-        oil_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('oil')).length,
-        water_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('water')).length,
-        gas_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('gas')).length,
-        diesel_valves: assets.filter((a: Asset): boolean => a.service_type?.toLowerCase().includes('diesel')).length,
+        // Service Type - ✅ Fixed: Use !! to force boolean return
+        oil_valves: assets.filter((a: Asset): boolean => 
+          !!a.service_type?.toLowerCase().includes('oil')
+        ).length,
+        water_valves: assets.filter((a: Asset): boolean => 
+          !!a.service_type?.toLowerCase().includes('water')
+        ).length,
+        gas_valves: assets.filter((a: Asset): boolean => 
+          !!a.service_type?.toLowerCase().includes('gas')
+        ).length,
+        diesel_valves: assets.filter((a: Asset): boolean => 
+          !!a.service_type?.toLowerCase().includes('diesel')
+        ).length,
         
         // Wellhead check
-        wellhead_valves: assets.filter((a: Asset): boolean => (a.sct_code || '').toLowerCase().includes('wellhead')).length,
+        wellhead_valves: assets.filter((a: Asset): boolean => 
+          !!(a.sct_code || '').toLowerCase().includes('wellhead')
+        ).length,
         
         // Actuation types
         bar_stem: countActuator('bar'),
@@ -168,7 +177,7 @@ export default function DashboardContent() {
         
         // Work orders
         overdue_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
-          wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
+          !!wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
         ).length,
         pending_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
           ['pending', 'assigned', 'in_progress'].includes(wo.status)
@@ -352,7 +361,7 @@ export default function DashboardContent() {
   );
 }
 
-// === Subcomponents ===
+// === Subcomponents with Proper Types ===
 function StatBadge({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number | string; color: string }) {
   const colors: Record<string, string> = {
     amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
