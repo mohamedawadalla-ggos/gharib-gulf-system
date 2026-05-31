@@ -7,7 +7,7 @@ import { createContext, useContext, ReactNode } from 'react';
 
 const inter = Inter({ subsets: ['latin'] });
 
-// === Inline Toast Context (No external file needed) ===
+// === Inline Toast Context ===
 interface ToastContextType {
   toast: (message: string) => void;
 }
@@ -18,7 +18,6 @@ function ToastProvider({ children }: { children: ReactNode }) {
   const toast = (message: string) => {
     console.log('🍞 Toast:', message);
   };
-
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
