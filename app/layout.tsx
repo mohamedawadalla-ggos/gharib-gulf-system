@@ -1,4 +1,6 @@
-// app/layout.tsx
+'use client';
+
+// ... rest of your imports and code// app/layout.tsx
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import Link from "next/link";
@@ -118,7 +120,7 @@ export default function RootLayout({
                       src="/logo.png" 
                       alt="Gharib Gulf Oil Services" 
                       className="h-10 w-auto transition-transform group-hover:scale-105"
-                      onError={(e) => {
+                      {
                         // Fallback if logo doesn't load
                         (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%231e3a5f'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23fbbf24' font-size='10' font-family='monospace'%3EGG%3C/text%3E%3C/svg%3E";
                       }}
@@ -223,10 +225,7 @@ export default function RootLayout({
                     src="/logo.png" 
                     alt="Gharib Gulf" 
                     className="h-5 w-auto opacity-70"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
+                                      />
                   <span className="text-xs text-navy-500">
                     © {new Date().getFullYear()} Gharib Gulf Oil Services
                   </span>
