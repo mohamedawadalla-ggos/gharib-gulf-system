@@ -1,4 +1,4 @@
-// app/dashboard/_components/DashboardContent.tsx
+// app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -14,73 +14,9 @@ import DashboardCharts from '@/components/DashboardCharts';
 
 const supabase = createSupabaseBrowserClient();
 
-// === TypeScript Interfaces ===
-interface ValveDetails {
-  actuator_type: string | null;
-  valve_type: string | null;
-}
-
-interface Asset {
-  id: string;
-  tag_number: string;
-  location_code: string | null;
-  detailed_location: string | null;
-  parent_well_name: string | null;
-  manufacturer: string | null;
-  service_type: string | null;
-  sct_code: string | null;
-  condition: string | null;
-  maintenance_status: string | null;
-  repair_status: string | null;
-  company_id: string | null;
-  valve_details?: ValveDetails | null;
-}
-
-interface WorkOrder {
-  id: string;
-  asset_id: string | null;
-  status: string;
-  due_date: string | null;
-  company_id: string | null;
-  asset_name?: string;
-}
-
-interface Campaign {
-  id: string;
-  status: string;
-}
-
-interface DashboardKPIs {
-  total_assets: number;
-  unique_locations: number;
-  unique_manufacturers: number;
-  oil_valves: number;
-  water_valves: number;
-  gas_valves: number;
-  diesel_valves: number;
-  wellhead_valves: number;
-  bar_stem: number;
-  gear_box: number;
-  hand_wheel: number;
-  lever: number;
-  manual: number;
-  good_for_service: number;
-  overdue_work_orders: number;
-  pending_work_orders: number;
-  completed_work_orders: number;
-  active_campaigns: number;
-}
-
-interface DashboardData {
-  assets: Asset[];
-  workOrders: WorkOrder[];
-  campaigns: Campaign[];
-  kpis: DashboardKPIs;
-}
-
-export default function DashboardContent() {
+export default function DashboardPage() {
   const { role, companyCode, isClient, loading: roleLoading } = useUserRole();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,53 +49,53 @@ export default function DashboardContent() {
       if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
       if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
 
-      let assets = assetsRes.data as Asset[] || [];
-      let workOrders = woRes.data as WorkOrder[] || [];
-      const campaigns = campRes.data as Campaign[] || [];
+      let assets = assetsRes.data || [];
+      let workOrders = woRes.data || [];
+      const campaigns = campRes.data || [];
 
       console.log('✅ Data loaded:', {
         assets: assets.length,
-        details_found: assets.filter((a: Asset) => !!a.valve_details).length
+        details_found: assets.filter((a: any): boolean => !!a.valve_details).length
       });
 
       // Client-side filtering for clients
       if (isClient && companyCode) {
-        assets = assets.filter((a: Asset) => a.company_id === companyCode);
-        workOrders = workOrders.filter((wo: WorkOrder) => wo.company_id === companyCode);
+        assets = assets.filter((a: any): boolean => a.company_id === companyCode);
+        workOrders = workOrders.filter((wo: any): boolean => wo.company_id === companyCode);
       }
 
       // Helper to count actuator types - ✅ Fixed TypeScript
       const countActuator = (keyword: string): number => {
-        return assets.filter((a: Asset): boolean => {
+        return assets.filter((a: any): boolean => {
           const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
           return !!type.includes(keyword);
         }).length;
       };
 
       // KPI Calculations - ✅ All filters now return explicit boolean
-      const kpis: DashboardKPIs = {
+      const kpis = {
         total_assets: assets.length,
-        unique_locations: new Set(assets.map((a: Asset): string => 
+        unique_locations: new Set(assets.map((a: any): string => 
           (a.location_code || a.detailed_location || a.parent_well_name || 'Unknown').replace(/^-+/, '').trim()
         )).size,
-        unique_manufacturers: new Set(assets.map((a: Asset): string => a.manufacturer || 'Unknown')).size,
+        unique_manufacturers: new Set(assets.map((a: any): string => a.manufacturer || 'Unknown')).size,
         
         // Service Type - ✅ Fixed: Use !! to force boolean return
-        oil_valves: assets.filter((a: Asset): boolean => 
+        oil_valves: assets.filter((a: any): boolean => 
           !!a.service_type?.toLowerCase().includes('oil')
         ).length,
-        water_valves: assets.filter((a: Asset): boolean => 
+        water_valves: assets.filter((a: any): boolean => 
           !!a.service_type?.toLowerCase().includes('water')
         ).length,
-        gas_valves: assets.filter((a: Asset): boolean => 
+        gas_valves: assets.filter((a: any): boolean => 
           !!a.service_type?.toLowerCase().includes('gas')
         ).length,
-        diesel_valves: assets.filter((a: Asset): boolean => 
+        diesel_valves: assets.filter((a: any): boolean => 
           !!a.service_type?.toLowerCase().includes('diesel')
         ).length,
         
         // Wellhead check
-        wellhead_valves: assets.filter((a: Asset): boolean => 
+        wellhead_valves: assets.filter((a: any): boolean => 
           !!(a.sct_code || '').toLowerCase().includes('wellhead')
         ).length,
         
@@ -171,19 +107,19 @@ export default function DashboardContent() {
         manual: countActuator('manual'),
         
         // Service status
-        good_for_service: assets.filter((a: Asset): boolean => 
+        good_for_service: assets.filter((a: any): boolean => 
           a.condition === 'good' || a.maintenance_status === 'up_to_date' || a.repair_status === 'none'
         ).length,
         
         // Work orders
-        overdue_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
+        overdue_work_orders: workOrders.filter((wo: any): boolean => 
           !!wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
         ).length,
-        pending_work_orders: workOrders.filter((wo: WorkOrder): boolean => 
+        pending_work_orders: workOrders.filter((wo: any): boolean => 
           ['pending', 'assigned', 'in_progress'].includes(wo.status)
         ).length,
-        completed_work_orders: workOrders.filter((wo: WorkOrder): boolean => wo.status === 'completed').length,
-        active_campaigns: campaigns.filter((c: Campaign): boolean => c.status === 'active').length
+        completed_work_orders: workOrders.filter((wo: any): boolean => wo.status === 'completed').length,
+        active_campaigns: campaigns.filter((c: any): boolean => c.status === 'active').length
       };
 
       console.log('📊 KPIs:', kpis);
@@ -323,8 +259,8 @@ export default function DashboardContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-800">
-                {(workOrders || []).slice(0, 5).map((wo: WorkOrder) => {
-                  const asset = assets.find((a: Asset): boolean => a.id === wo.asset_id);
+                {(workOrders || []).slice(0, 5).map((wo: any) => {
+                  const asset = assets.find((a: any): boolean => a.id === wo.asset_id);
                   const tagNumber = asset?.tag_number || wo.asset_name || wo.asset_id?.slice(0, 12) || 'N/A';
                   return (
                     <tr key={wo.id} className="hover:bg-navy-800/50 transition">

@@ -1,14 +1,15 @@
-// lib/supabase/client.ts
 import { createBrowserClient } from '@supabase/ssr';
 
-let supabaseClient: ReturnType<typeof createBrowserClient>;
+// This variable holds the single instance
+let supabaseInstance: ReturnType<typeof createBrowserClient>;
 
 export function createSupabaseBrowserClient() {
-  if (!supabaseClient) {
-    supabaseClient = createBrowserClient(
+  // If it doesn't exist, create it. If it does, return the existing one.
+  if (!supabaseInstance) {
+    supabaseInstance = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
   }
-  return supabaseClient;
+  return supabaseInstance;
 }
