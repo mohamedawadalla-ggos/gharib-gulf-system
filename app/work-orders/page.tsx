@@ -1,14 +1,23 @@
+// app/work-orders/page.tsx
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { 
   Plus, Search, Eye, AlertTriangle, CheckCircle, Clock,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Filter, Trash2, Loader2
 } from 'lucide-react';
-import Link from 'next/link';
 
 const supabase = createSupabaseBrowserClient();
+
+// === TypeScript Interfaces ===
+interface Asset {
+  id: string;
+  tag_number: string;
+  location_code: string | null;
+  stations?: { code: string } | null;
+}
 
 interface WorkOrder {
   id: string;
@@ -20,36 +29,13 @@ interface WorkOrder {
   assigned_crew: string | null;
   due_date: string | null;
   created_at: string;
-  asset?: { tag_number: string };
+  deleted_at: string | null;
+  asset?: Asset;
 }
 
 // === TypeScript Types ===
 type SortColumn = 'work_order_number' | 'title' | 'status' | 'priority' | 'assigned_crew' | 'due_date' | 'created_at';
 type SortDirection = 'asc' | 'desc';
-
-// === Sort Function ===
-const sortData = (data: WorkOrder[]): WorkOrder[] => {
-  return [...data].sort((a, b) => {
-    let aValue: any = a[sortColumn];
-    let bValue: any = b[sortColumn];
-
-    // Handle dates
-    if (sortColumn === 'due_date' || sortColumn === 'created_at') {
-      aValue = aValue ? new Date(aValue).getTime() : 0;
-      bValue = bValue ? new Date(bValue).getTime() : 0;
-    }
-
-    // Handle strings
-    if (typeof aValue === 'string') aValue = aValue.toLowerCase();
-    if (typeof bValue === 'string') bValue = bValue.toLowerCase();
-
-    if (sortDirection === 'asc') {
-      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-    } else {
-      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-    }
-  });
-};
 
 export default function WorkOrdersPage() {
   const router = useRouter();
@@ -60,7 +46,6 @@ export default function WorkOrdersPage() {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sortColumn, setSortColumn] = useState<SortColumn>('due_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [debugMsg, setDebugMsg] = useState('');
 
   useEffect(() => {
     fetchWorkOrders();
@@ -68,7 +53,6 @@ export default function WorkOrdersPage() {
 
   async function fetchWorkOrders() {
     setLoading(true);
-    setDebugMsg('Fetching...');
     try {
       console.log('🔍 Fetching work orders...');
       
@@ -91,12 +75,10 @@ export default function WorkOrdersPage() {
       
       if (error) {
         console.error('❌ Error:', error);
-        setDebugMsg(`Error: ${error.message}`);
         throw error;
       }
 
       console.log('✅ Fetched:', data?.length || 0, 'work orders');
-      setDebugMsg(`Loaded ${data?.length || 0} work orders`);
       
       // Sort client-side
       const sorted = sortData(data || []);
@@ -104,35 +86,35 @@ export default function WorkOrdersPage() {
       
     } catch (err: any) {
       console.error('🚨 Fetch failed:', err);
-      setDebugMsg(`Failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
   }
 
-const sortData = (data: WorkOrder[]): WorkOrder[] => {
-  return [...data].sort((a, b) => {
-    // ✅ Use type assertion to safely index WorkOrder
-    let aValue: any = a[sortColumn as keyof WorkOrder];
-    let bValue: any = b[sortColumn as keyof WorkOrder];
+  // ✅ Fixed sortData function with proper type assertion
+  const sortData = (data: WorkOrder[]): WorkOrder[] => {
+    return [...data].sort((a, b) => {
+      // ✅ Use keyof assertion for safe indexing
+      let aValue: any = a[sortColumn as keyof WorkOrder];
+      let bValue: any = b[sortColumn as keyof WorkOrder];
 
-    // Handle dates
-    if (sortColumn === 'due_date' || sortColumn === 'created_at') {
-      aValue = aValue ? new Date(aValue).getTime() : 0;
-      bValue = bValue ? new Date(bValue).getTime() : 0;
-    }
+      // Handle date fields
+      if (sortColumn === 'due_date' || sortColumn === 'created_at') {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
 
-    // Handle strings
-    if (typeof aValue === 'string') aValue = aValue.toLowerCase();
-    if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+      // Handle string comparison (case-insensitive)
+      if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+      if (typeof bValue === 'string') bValue = bValue.toLowerCase();
 
-    if (sortDirection === 'asc') {
-      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-    } else {
-      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-    }
-  });
-};
+      if (sortDirection === 'asc') {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+      }
+    });
+  };
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -171,7 +153,7 @@ const sortData = (data: WorkOrder[]): WorkOrder[] => {
     return (
       <div className="min-h-screen bg-navy-950 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
-        <p className="text-navy-300">Loading... {debugMsg}</p>
+        <p className="text-navy-300">Loading...</p>
       </div>
     );
   }
@@ -182,7 +164,7 @@ const sortData = (data: WorkOrder[]): WorkOrder[] => {
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-navy-50">Work Orders</h1>
-            <p className="text-navy-300 mt-1 text-sm">{debugMsg}</p>
+            <p className="text-navy-300 mt-1 text-sm">{workOrders.length} orders found</p>
           </div>
           <button
             onClick={() => router.push('/work-orders/new')}
@@ -238,7 +220,6 @@ const sortData = (data: WorkOrder[]): WorkOrder[] => {
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-12 text-center">
             <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
             <p className="text-navy-300 mb-4">No work orders found</p>
-            <p className="text-xs text-navy-500 mb-4">{debugMsg}</p>
             <button onClick={fetchWorkOrders} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg">
               Refresh
             </button>
