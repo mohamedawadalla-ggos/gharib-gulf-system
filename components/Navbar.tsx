@@ -7,7 +7,8 @@ import {
   LayoutDashboard, 
   Package, 
   Wrench, 
-  Smartphone,
+  Target,
+  CalendarCheck,
   Menu,
   X
 } from 'lucide-react';
@@ -17,7 +18,8 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/work-orders', label: 'Work Orders', icon: Wrench },
-  { href: '/mobile/tasks', label: 'Service Entry', icon: Smartphone },
+  { href: '/campaign-dashboard', label: 'Campaign', icon: Target },
+  { href: '/daily-assignments', label: 'Daily Assignments', icon: CalendarCheck },
 ];
 
 export default function Navbar() {
