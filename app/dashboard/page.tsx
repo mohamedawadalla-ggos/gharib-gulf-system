@@ -80,12 +80,12 @@ export default function DashboardPage() {
         workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
       }
 
-      const countActuator = (keyword: string) => {
-        return assets.filter(a => {
-          const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
-          return type.includes(keyword);
-        }).length;
-      };
+     const countActuator = (keyword: string): number => {
+  return assets.filter((a: any): boolean => {
+    const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
+    return !!type.includes(keyword);
+  }).length;
+};
 
       const kpis: DashboardKPIs = {
         total_assets: assets.length,
