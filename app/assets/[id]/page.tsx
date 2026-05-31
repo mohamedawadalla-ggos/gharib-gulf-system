@@ -165,7 +165,7 @@ export default function AssetDetailPage() {
         return;
       }
 
-      // Get public URLs for each photo - ✅ Fixed TypeScript type
+      // Get public URLs for each photo
       const photosWithUrls = await Promise.all(
         (photoData || []).map(async (photo: {
           id: string;
@@ -379,33 +379,93 @@ export default function AssetDetailPage() {
               </div>
             </div>
 
-                      {/* Actions */}
+            {/* 📸 Photo Gallery Section */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
-              <h2 className="text-lg font-semibold text-navy-100 mb-4">Actions</h2>
-              <div className="space-y-3">
-                <button 
-                  onClick={() => router.push(`/work-orders/new?asset=${asset.id}`)}
-                  className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
-                >
-                  <Calendar className="w-4 h-4" />
-                  Schedule Maintenance
-                </button>
-                <button 
-                  onClick={() => alert('Asset editing will be available in the next update.')}
-                  className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600 flex items-center justify-center gap-2"
-                >
-                  <Wrench className="w-4 h-4" />
-                  Update Asset Info
-                </button>
-                <button 
-                  onClick={() => alert('Maintenance history view coming soon.')}
-                  className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600 flex items-center justify-center gap-2"
-                >
-                  <Clock className="w-4 h-4" />
-                  View Maintenance History
-                </button>
-              </div>
+              <h2 className="text-lg font-semibold text-navy-100 mb-4 flex items-center gap-2">
+                <Camera className="w-5 h-5 text-amber-400" />
+                Maintenance Photos ({photos.length})
+              </h2>
+
+              {photos.length === 0 ? (
+                <div className="text-center py-8 text-navy-400 border-2 border-dashed border-navy-700 rounded-lg">
+                  <Camera className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No photos uploaded yet</p>
+                  <p className="text-xs mt-1">Photos appear here after mobile task completion</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {photos.map((photo) => (
+                    <div 
+                      key={photo.id} 
+                      className="bg-navy-800 rounded-lg overflow-hidden border border-navy-700 group hover:border-amber-500/50 transition-colors"
+                    >
+                      {/* Photo Image - Click to Open Lightbox */}
+                      <div 
+                        className="relative cursor-pointer aspect-video bg-navy-950"
+                        onClick={() => setSelectedPhoto(photo)}
+                      >
+                        <img 
+                          src={photo.public_url} 
+                          alt={photo.image_type || 'Maintenance photo'}
+                          className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect fill="%231e293b" width="400" height="300"/%3E%3Ctext fill="%2364748b" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not found%3C/text%3E%3C/svg%3E';
+                          }}
+                        />
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white text-sm font-medium flex items-center gap-2">
+                            <Download className="w-4 h-4" /> View Full Size
+                          </span>
+                        </div>
+                        {/* Type Badge */}
+                        {photo.image_type && (
+                          <span className="absolute top-2 left-2 px-2 py-1 bg-amber-500/90 text-navy-950 text-xs font-bold rounded">
+                            {photo.image_type.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Photo Metadata */}
+                      <div className="p-4 space-y-3">
+                        {/* Date & Time */}
+                        <div className="flex items-center gap-2 text-xs text-navy-400">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {new Date(photo.created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                        
+                        {/* GPS Coordinates */}
+                        {photo.captured_gps_lat && photo.captured_gps_lng && (
+                          <div className="flex items-center gap-2 text-xs text-navy-400">
+                            <MapPin className="w-3 h-3" />
+                            <span className="font-mono">
+                              {photo.captured_gps_lat.toFixed(5)}, {photo.captured_gps_lng.toFixed(5)}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Notes */}
+                        {photo.notes && (
+                          <p className="text-sm text-navy-300 leading-relaxed border-t border-navy-700 pt-2">
+                            {photo.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
+
           {/* Right Column */}
           <div className="space-y-6">
             {/* Current Status */}
@@ -442,17 +502,29 @@ export default function AssetDetailPage() {
               </div>
             )}
 
-            {/* Actions */}
+            {/* Actions - ✅ FIXED WITH onClick HANDLERS */}
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-6">
               <h2 className="text-lg font-semibold text-navy-100 mb-4">Actions</h2>
               <div className="space-y-3">
-                <button className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg transition-colors font-medium">
+                <button 
+                  onClick={() => router.push(`/work-orders/new?asset=${asset.id}`)}
+                  className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
                   Schedule Maintenance
                 </button>
-                <button className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600">
+                <button 
+                  onClick={() => alert('Asset editing will be available in the next update.')}
+                  className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600 flex items-center justify-center gap-2"
+                >
+                  <Wrench className="w-4 h-4" />
                   Update Asset Info
                 </button>
-                <button className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600">
+                <button 
+                  onClick={() => alert('Maintenance history view coming soon.')}
+                  className="w-full px-4 py-2 bg-navy-800 hover:bg-navy-700 text-navy-200 rounded-lg transition-colors border border-navy-600 flex items-center justify-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
                   View Maintenance History
                 </button>
               </div>
