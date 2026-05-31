@@ -9,6 +9,7 @@ import {
   Wrench, 
   Target,
   CalendarCheck,
+  Smartphone,
   Menu,
   X
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/work-orders', label: 'Work Orders', icon: Wrench },
   { href: '/campaign-dashboard', label: 'Campaign', icon: Target },
   { href: '/daily-assignments', label: 'Daily Assignments', icon: CalendarCheck },
+  { href: '/mobile/tasks', label: 'Service Entry', icon: Smartphone },
 ];
 
 export default function Navbar() {
@@ -38,7 +40,7 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden lg:flex items-center space-x-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -46,7 +48,7 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
                     isActive
                       ? 'bg-amber-500 text-navy-950'
                       : 'text-navy-300 hover:bg-navy-800 hover:text-navy-100'
@@ -62,7 +64,7 @@ export default function Navbar() {
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-navy-300 hover:text-navy-100"
+            className="lg:hidden p-2 text-navy-300 hover:text-navy-100"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -71,7 +73,7 @@ export default function Navbar() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 space-y-2">
+          <div className="lg:hidden py-4 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
