@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   Package, AlertTriangle, Clock, CheckCircle, Wrench,
   TrendingUp, ArrowRight, Eye, Filter, MapPin, Factory,
-  Droplet, Settings, Calendar, Users
+  Droplet, Settings, Calendar, Users, DollarSign, FileText, Smartphone
 } from 'lucide-react';
 import DashboardCharts from '@/components/DashboardCharts';
 
@@ -31,96 +31,39 @@ export default function DashboardNew() {
     setLoading(true);
     setError(null);
     try {
-      console.log('🔍 Starting dashboard fetch...');
+      console.log('🔍 GHARIB GULF SYSTEM: Fetching financial and operational data...');
       
-      // ✅ Join assets with valve_details
-      const assetsRes = await supabase
-        .from('assets')
-        .select(`
-          *,
-          valve_details (
-            actuator_type,
-            valve_type
-          )
-        `)
-        .limit(10000);
+      // جلب البيانات الأساسية من الأصول وأوامر العمل لعمل الحسابات الديناميكية
+      const { data: assets, error: assetsErr } = await supabase.from('assets').select('*');
+      const { data: workOrders, error: woErr } = await supabase.from('work_orders').select('*');
 
-      const woRes = await supabase.from('work_orders').select('*').limit(5000);
-      const campRes = await supabase.from('campaign_plans').select('*').limit(1000);
+      if (assetsErr || woErr) throw assetsErr || woErr;
 
-      if (assetsRes.error) throw new Error(`Assets: ${assetsRes.error.message}`);
-      if (woRes.error) throw new Error(`Work Orders: ${woRes.error.message}`);
+      // حسابات تجريبية بناءً على أرقام مناقصة خالدة الفعلية (905,038 ج.م كإجمالي مستهدف)
+      const totalValvesTarget = 3680; // 3558 محطات + 122 حريق
+      const targetBudget = 905038; 
+      
+      const completedValves = assets?.filter(a => a.condition === 'good' || a.maintenance_status === 'completed').length || 0;
+      const completionRate = totalValvesTarget > 0 ? (completedValves / totalValvesTarget) : 0;
+      
+      // احتساب الإنجاز المالي الديناميكي بناءً على نسبة الصمامات المنجزة فعلياً
+      const achievedBudget = Math.round(targetBudget * completionRate);
 
-      let assets = assetsRes.data || [];
-      let workOrders = woRes.data || [];
-      const campaigns = campRes.data || [];
-
-      console.log('✅ Data loaded:', {
-        assets: assets.length,
-        details_found: assets.filter(a => a.valve_details).length
+      setDashboardData({
+        totalValves: totalValvesTarget,
+        completedValves: completedValves,
+        pendingValves: totalValvesTarget - completedValves,
+        targetBudget: targetBudget,
+        achievedBudget: achievedBudget,
+        activeCrews: 4, // فرق عمل حقل الكرامة
+        pendingOrders: workOrders?.filter(w => w.status === 'pending' || w.status === 'assigned').length || 0,
+        inProgressOrders: workOrders?.filter(w => w.status === 'in_progress').length || 0,
+        completedOrders: workOrders?.filter(w => w.status === 'completed').length || 0,
       });
 
-      // Client-side filtering for clients
-      if (isClient && companyCode) {
-        assets = assets.filter((a: any) => a.company_id === companyCode);
-        workOrders = workOrders.filter((wo: any) => wo.company_id === companyCode);
-      }
-
-      // ✅ Helper to count actuator types from the joined table
-      const countActuator = (keyword: string) => {
-        return assets.filter(a => {
-          const type = (a.valve_details?.actuator_type || a.valve_details?.valve_type || '').toLowerCase();
-          return type.includes(keyword);
-        }).length;
-      };
-
-      // ✅ EXACT SCHEMA-MAPPED KPIs
-      const kpis = {
-        total_assets: assets.length,
-        unique_locations: new Set(assets.map((a: any) => 
-          (a.location_code || a.detailed_location || a.parent_well_name || 'Unknown').replace(/^-+/, '').trim()
-        )).size,
-        unique_manufacturers: new Set(assets.map((a: any) => a.manufacturer || 'Unknown')).size,
-        
-        // Service Type
-        oil_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('oil')).length,
-        water_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('water')).length,
-        gas_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('gas')).length,
-        diesel_valves: assets.filter((a: any) => a.service_type?.toLowerCase().includes('diesel')).length,
-        
-        // ✅ UPDATED: Check sct_code (which contains 'Wellhead' in your screenshot)
-        wellhead_valves: assets.filter(a => 
-          (a.sct_code || '').toLowerCase().includes('wellhead')
-        ).length,
-        
-        // Actuation types (for breakdown section)
-        bar_stem: countActuator('bar'),
-        gear_box: countActuator('gear'),
-        hand_wheel: countActuator('wheel'),
-        lever: countActuator('lever'),
-        manual: countActuator('manual'),
-        
-        // Service status
-        good_for_service: assets.filter((a: any) => 
-          a.condition === 'good' || a.maintenance_status === 'up_to_date' || a.repair_status === 'none'
-        ).length,
-        
-        // Work orders
-        overdue_work_orders: workOrders.filter((wo: any) => 
-          wo.due_date && wo.due_date < new Date().toISOString().split('T')[0] && wo.status !== 'completed'
-        ).length,
-        pending_work_orders: workOrders.filter((wo: any) => 
-          ['pending', 'assigned', 'in_progress'].includes(wo.status)
-        ).length,
-        completed_work_orders: workOrders.filter((wo: any) => wo.status === 'completed').length,
-        active_campaigns: campaigns.filter((c: any) => c.status === 'active').length
-      };
-
-      console.log('📊 KPIs:', kpis);
-      setDashboardData({ assets, workOrders, campaigns, kpis });
     } catch (err: any) {
-      console.error('🚨 Dashboard Error:', err.message || err);
-      setError(err.message || 'Failed to load dashboard data');
+      console.error('❌ Error fetching dashboard data:', err);
+      setError(err.message || 'حدث خطأ أثناء تحميل لوحة القيادة');
     } finally {
       setLoading(false);
     }
@@ -128,260 +71,259 @@ export default function DashboardNew() {
 
   if (roleLoading || loading) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-amber-500 mx-auto"></div>
+          <p className="mt-4 text-navy-400 font-medium animate-pulse">جاري تحميل نظام GHARIB GULF SYSTEM...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-navy-950 p-6">
-        <div className="max-w-2xl mx-auto bg-red-900/20 border border-red-500/30 rounded-lg p-6 text-center">
-          <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-3" />
-          <h2 className="text-xl font-semibold text-red-400 mb-2">Dashboard Error</h2>
-          <p className="text-navy-300 mb-4 text-sm break-all">{error}</p>
-          <button onClick={fetchDashboardData} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition">Retry</button>
-        </div>
+      <div className="p-6 max-w-xl mx-auto mt-10 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+        <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-3" />
+        <h3 className="text-lg font-bold text-red-200">فشل في الاتصال بقاعدة البيانات</h3>
+        <p className="text-red-400 text-sm mt-1">{error}</p>
+        <button onClick={fetchDashboardData} className="mt-4 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition">
+          إعادة المحاولة
+        </button>
       </div>
     );
   }
-
-  if (!dashboardData) {
-    return (
-      <div className="min-h-screen bg-navy-950 p-6">
-        <div className="max-w-2xl mx-auto bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6 text-center">
-          <AlertTriangle className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
-          <h2 className="text-xl font-semibold text-yellow-400 mb-2">No Data Loaded</h2>
-          <button onClick={fetchDashboardData} className="px-4 py-2 bg-amber-500 text-navy-950 rounded-lg">Retry</button>
-        </div>
-      </div>
-    );
-  }
-
-  const { kpis, assets, workOrders, campaigns } = dashboardData;
 
   return (
-    <div className="min-h-screen bg-navy-950 text-navy-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-amber-400">🔩 Khalda Valves Dashboard</h1>
-            <p className="text-navy-400 mt-1 text-sm md:text-base">
-              {isClient ? `Company: ${companyCode} • ` : ''}
-              {kpis.total_assets.toLocaleString()} valves • {kpis.unique_locations} locations • Updated {new Date().toLocaleDateString()}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {isClient && (
-              <span className="px-3 py-1 bg-blue-900/30 border border-blue-500/30 rounded-full text-sm text-blue-300 flex items-center gap-2">
-                <Eye className="w-4 h-4" /> Client View
-              </span>
-            )}
-            <button onClick={fetchDashboardData} className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm flex items-center gap-2 transition">
-              <Filter className="w-4 h-4" /> Refresh
-            </button>
-          </div>
+    <div className="p-6 space-y-8 max-w-[1600px] mx-auto text-right" dir="rtl">
+      
+      {/* هيدر ترحيبي مع هوية النظام */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-navy-800 pb-5">
+        <div>
+          <span className="text-xs font-bold tracking-widest text-amber-500 uppercase">لوحة القيادة المركزية</span>
+          <h1 className="text-3xl font-black text-white mt-1 font-sans">GHARIB GULF SYSTEM</h1>
+          <p className="text-navy-400 text-sm mt-1">مشروع إدارة صيانة صمامات ورؤوس آبار حقول شركة خالدة للبترول</p>
         </div>
-
-        {/* Summary Stats Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
-          <StatBadge icon={<Package />} label="Total Valves" value={kpis.total_assets} color="amber" />
-          <StatBadge icon={<MapPin />} label="Locations" value={kpis.unique_locations} color="blue" />
-          <StatBadge icon={<Factory />} label="Manufacturers" value={kpis.unique_manufacturers} color="purple" />
-          <StatBadge icon={<Droplet />} label="Oil Valves" value={kpis.oil_valves} color="green" />
-          <StatBadge icon={<Settings />} label="Wellhead Valves" value={kpis.wellhead_valves} color="cyan" />
-          <StatBadge icon={<Calendar />} label="Pending WOs" value={kpis.pending_work_orders} color="yellow" />
+        <div className="flex items-center gap-3 bg-navy-900 border border-navy-800 px-4 py-2 rounded-xl">
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-ping"></div>
+          <span className="text-xs text-navy-300 font-medium">مستطاع الصلاحية: <strong className="text-amber-400 uppercase">{role?.replace('_', ' ')}</strong></span>
         </div>
+      </div>
 
-        {/* Main KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KPICard title="Total Assets" value={kpis.total_assets} subtitle={`${kpis.good_for_service} Good for Service`} icon={<Package className="w-5 h-5" />} color="amber" trend={kpis.good_for_service > kpis.total_assets * 0.5 ? 'up' : 'neutral'} />
-          <KPICard title="Overdue Work Orders" value={kpis.overdue_work_orders} subtitle="Requires attention" icon={<AlertTriangle className="w-5 h-5" />} color="red" alert={kpis.overdue_work_orders > 0} />
-          <KPICard title="Pending Work Orders" value={kpis.pending_work_orders} subtitle={`${kpis.completed_work_orders} completed`} icon={<Clock className="w-5 h-5" />} color="blue" />
-          <KPICard title="Active Campaigns" value={kpis.active_campaigns} subtitle="Maintenance programs" icon={<Users className="w-5 h-5" />} color="green" />
-        </div>
-
-        {/* 📊 CHARTS SECTION */}
-        {assets && assets.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-4 text-navy-200 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-amber-400" /> Analytics & Insights
-            </h2>
-            <DashboardCharts assets={assets} workOrders={workOrders || []} campaigns={campaigns || []} />
-          </div>
-        )}
-
-        {/* Application Breakdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-5 lg:col-span-2">
-            <h3 className="font-semibold mb-4 flex items-center gap-2"><Droplet className="w-4 h-4 text-amber-400" /> Valve Application Breakdown</h3>
-            <div className="space-y-3">
-              <ApplicationBar label="Oil" value={kpis.oil_valves} total={kpis.total_assets} color="bg-amber-500" />
-              <ApplicationBar label="Water" value={kpis.water_valves} total={kpis.total_assets} color="bg-blue-500" />
-              <ApplicationBar label="Gas" value={kpis.gas_valves} total={kpis.total_assets} color="bg-green-500" />
-              <ApplicationBar label="Other" value={kpis.total_assets - kpis.oil_valves - kpis.water_valves - kpis.gas_valves} total={kpis.total_assets} color="bg-navy-600" />
-            </div>
-          </div>
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-5">
-            <h3 className="font-semibold mb-4 flex items-center gap-2"><Settings className="w-4 h-4 text-amber-400" /> Actuation Types</h3>
-            <div className="space-y-3">
-              <ActuationItem label="Bar Stem" value={kpis.bar_stem || 0} total={kpis.total_assets} />
-              <ActuationItem label="Gear Box" value={kpis.gear_box || 0} total={kpis.total_assets} />
-              <ActuationItem label="Hand Wheel" value={kpis.hand_wheel || 0} total={kpis.total_assets} />
-              <ActuationItem label="Manual (Other)" value={kpis.manual || 0} total={kpis.total_assets} />
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Work Orders */}
-        <div className="bg-navy-900 rounded-lg border border-navy-700 p-5 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4 text-amber-400" /> Recent Work Orders</h3>
-            <Link href="/work-orders" className="text-amber-400 hover:text-amber-300 text-sm flex items-center gap-1">View All <ArrowRight className="w-3 h-3" /></Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-navy-700">
-                <tr className="text-left text-navy-400">
-                  <th className="pb-3 font-medium">ID</th>
-                  <th className="pb-3 font-medium">Tag Number</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Due Date</th>
-                  <th className="pb-3 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-navy-800">
-                {(workOrders || []).slice(0, 5).map((wo: any) => {
-                  const asset = assets.find((a: any) => a.id === wo.asset_id);
-                  const tagNumber = asset?.tag_number || wo.asset_name || wo.asset_id?.slice(0, 12) || 'N/A';
-                  return (
-                    <tr key={wo.id} className="hover:bg-navy-800/50 transition">
-                      <td className="py-3 font-mono text-amber-400 text-xs">{wo.id?.slice(0, 8)}...</td>
-                      <td className="py-3 text-navy-300 text-sm font-medium">{tagNumber}</td>
-                      <td className="py-3"><StatusBadge status={wo.status} /></td>
-                      <td className="py-3 text-navy-300 text-xs">{wo.due_date ? new Date(wo.due_date).toLocaleDateString() : '-'}</td>
-                      <td className="py-3">
-                        <Link href={`/work-orders/${wo.id}`} className="text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1">View <ArrowRight className="w-3 h-3" /></Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {(!workOrders || workOrders.length === 0) && <tr><td colSpan={5} className="py-6 text-center text-navy-400">No work orders found</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
+      {/* 🌟 قسم روابط الانطلاق السريع والتحكم المركزي (The Navigation Hub) */}
+      <div>
+        <h2 className="text-lg font-bold text-navy-200 mb-4 flex items-center gap-2">
+          <Settings className="h-5 w-5 text-amber-500" />
+          بوابة التحكم والانطلاق السريع للبرنامج
+        </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {!isClient && <QuickAction href="/work-orders/new" icon={<Wrench />} label="Create Work Order" color="amber" />}
-          {!isClient && <QuickAction href="/assets" icon={<Package />} label="Manage Assets" color="blue" />}
-          {(isAdmin || isTopManagement) && <QuickAction href="/reports" icon={<TrendingUp />} label="Export Reports" color="green" />}
-          <QuickAction href="/dashboard" icon={<Filter />} label="Refresh Data" color="navy" />
+          
+          <QuickLinkCard 
+            title="سجل الأصول والصمامات" 
+            description="إدارة ومراقبة 3,680 صمام، تحديث الـ SCT وفلاتر المواصفات والبحث."
+            href="/assets" 
+            icon={<Package className="h-6 w-6 text-blue-400" />}
+            badge="تصفح وتصدير"
+            color="border-blue-500/20 hover:border-blue-500/40"
+          />
+
+          <QuickLinkCard 
+            title="أوامر العمل (Work Orders)" 
+            description="متابعة الـ 113 أمر عمل الصادرة، تعيين الطواقم، وطباعة التقارير."
+            href="/work-orders" 
+            icon={<FileText className="h-6 w-6 text-purple-400" />}
+            badge="إدارة التشغيل"
+            color="border-purple-500/20 hover:border-purple-500/40"
+          />
+
+          {(isAdmin || isTopManagement || isFieldManager || isSupervisor) && (
+            <QuickLinkCard 
+              title="التكليفات اليومية" 
+              description="توزيع الصمامات المستهدفة (30 صمام/يوم) وإنشاء المهام اليومية للفرق."
+              href="/daily-assignments" 
+              icon={<Calendar className="h-6 w-6 text-amber-400" />}
+              badge="التخطيط الميداني"
+              color="border-amber-500/20 hover:border-amber-500/40"
+            />
+          )}
+
+          <QuickLinkCard 
+            title="بوابة الفنيين (تطبيق الموبايل)" 
+            description="الواجهة الميدانية المخصصة للهواتف: التقاط صور الصيانة، ورفع الـ GPS."
+            href="/mobile/tasks" 
+            icon={<Smartphone className="h-6 w-6 text-green-400" />}
+            badge="شاشة الميدان / PWA"
+            color="border-green-500/20 hover:border-green-500/40"
+          />
+
+        </div>
+      </div>
+
+      {/* البطاقات الرقمية ومؤشرات الأداء المالي والفني (Financial & Operational KPIs) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        
+        {/* الكرت المالي - إجمالي قيمة العقد المنجزة */}
+        <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 h-[4px] w-full bg-gradient-to-l from-green-500 to-emerald-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-medium text-navy-400">المستخلص المالي المنجز (عقد خالدة)</p>
+              <h3 className="text-2xl font-black text-white mt-2 font-mono">
+                {dashboardData.achievedBudget.toLocaleString()} <span className="text-xs text-green-400 font-sans">ج.م</span>
+              </h3>
+            </div>
+            <div className="p-3 bg-green-500/10 rounded-xl text-green-400">
+              <DollarSign className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-navy-800/60 flex justify-between items-center text-xs text-navy-400">
+            <span>القيمة المستهدفة الكلية:</span>
+            <span className="font-mono text-navy-200">{dashboardData.targetBudget.toLocaleString()} ج.م</span>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-navy-800 text-center text-xs text-navy-500">
-          <p>Khalda Valves Database • {kpis.total_assets.toLocaleString()} records • {kpis.unique_locations} locations • {kpis.unique_manufacturers} manufacturers</p>
-          <p className="mt-1">Data source: Khalda Valves data.xlsx + Khalda Wellheads & Wellhead Valves data.xlsx</p>
+        {/* كرت تقدم العمل الفعلي للصمامات */}
+        <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 h-[4px] w-full bg-gradient-to-l from-amber-500 to-orange-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-medium text-navy-400">إجمالي الصمامات المنجزة</p>
+              <h3 className="text-2xl font-black text-white mt-2 font-mono">
+                {dashboardData.completedValves} <span className="text-xs text-navy-500 font-sans">/ {dashboardData.totalValves}</span>
+              </h3>
+            </div>
+            <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400">
+              <CheckCircle className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-navy-800/60 text-xs flex justify-between items-center">
+            <span className="text-navy-400">نسبة الإنجاز الفني للمشروع:</span>
+            <span className="text-amber-400 font-bold font-mono">
+              {Math.round((dashboardData.completedValves / dashboardData.totalValves) * 100)}%
+            </span>
+          </div>
         </div>
+
+        {/* كرت حالة أوامر العمل القائمة */}
+        <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 h-[4px] w-full bg-gradient-to-l from-blue-500 to-indigo-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-medium text-navy-400">أوامر العمل قيد التنفيذ</p>
+              <h3 className="text-2xl font-black text-white mt-2 font-mono">{dashboardData.inProgressOrders}</h3>
+            </div>
+            <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">
+              <Wrench className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-navy-800/60 text-xs text-navy-400 flex justify-between">
+            <span>في الانتظار: <strong className="text-navy-200 font-mono">{dashboardData.pendingOrders}</strong></span>
+            <span>مكتملة: <strong className="text-green-400 font-mono">{dashboardData.completedOrders}</strong></span>
+          </div>
+        </div>
+
+        {/* كرت المتبقي والمستهدف */}
+        <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 h-[4px] w-full bg-gradient-to-l from-purple-500 to-pink-600"></div>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-medium text-navy-400">صمامات متبقية للفحص</p>
+              <h3 className="text-2xl font-black text-white mt-2 font-mono">{dashboardData.pendingValves}</h3>
+            </div>
+            <div className="p-3 bg-purple-500/10 rounded-xl text-purple-400">
+              <Clock className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-navy-800/60 text-xs text-navy-400 flex justify-between items-center">
+            <span>طواقم صيانة الحقل النشطة:</span>
+            <span className="font-mono bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded">{dashboardData.activeCrews} فرق</span>
+          </div>
+        </div>
+
       </div>
+
+      {/* قسم التحليلات والرسوم البيانية الهندسية */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* الرسم البياني الممتد عبر عمودين */}
+        <div className="lg:col-span-2 bg-navy-900 border border-navy-800 p-5 rounded-2xl">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="text-base font-bold text-white">منحنى تقدم صيانة المحطات المالي والفيزيائي</h3>
+              <p className="text-xs text-navy-400 mt-0.5">مقارنة خطة الإنجاز الفعلية بالمستهدف اليومي لعقد خالدة</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="flex items-center gap-1.5 text-navy-300">
+                <span className="h-2 w-2 rounded-full bg-amber-500"></span> المنجز ماليّاً
+              </span>
+              <span className="flex items-center gap-1.5 text-navy-300">
+                <span className="h-2 w-2 rounded-full bg-blue-500"></span> عدد الصمامات
+              </span>
+            </div>
+          </div>
+          <div className="h-80 w-full">
+            <DashboardCharts data={dashboardData} />
+          </div>
+        </div>
+
+        {/* توزيع أحمال الصمامات حسب المحطة ماليّاً وفنيّاً */}
+        <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl flex flex-col justify-between">
+          <div>
+            <h3 className="text-base font-bold text-white mb-1">توزيع صمامات محطات الكرامة</h3>
+            <p className="text-xs text-navy-400 mb-4">الأصول والنسب المالية المستهدفة لكل منطقة حقلية</p>
+            
+            <div className="space-y-3">
+              <StationProgressRow label="محطات نفط الكرامة (Karama Stations)" value={3558} percent={96.7} money="872,917 ج.م" />
+              <StationProgressRow label="شبكة الإطفاء والحريق (Karama CPF)" value={122} percent={3.3} money="32,121 ج.م" />
+            </div>
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-navy-800 bg-navy-950/40 p-3 rounded-xl text-xs text-navy-400 leading-relaxed">
+            <span className="text-amber-500 font-bold block mb-1">💡 ملحوظة تجارية:</span>
+            بإمكان المشرف إصدار المستخلصات والتقارير المالية الفورية للمحطات المكتملة لتقديمها مباشرة لإدارة شركة خالدة عبر صفحة أوامر العمل.
+          </div>
+        </div>
+
+      </div>
+
     </div>
   );
 }
 
-// === Subcomponents ===
-function StatBadge({ icon, label, value, color }: any) {
-  const colors: Record<string, string> = {
-    amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-    green: 'bg-green-500/10 text-green-400 border-green-500/20',
-    cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-    yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-  };
+{/* 🛠️ المكون البرمجي الفرعي لكروت التحكم والانطلاق السريع */}
+function QuickLinkCard({ title, description, href, icon, badge, color }: any) {
   return (
-    <div className={`p-3 rounded-lg border text-center ${colors[color]}`}>
-      <div className="flex justify-center mb-1">{icon}</div>
-      <div className="text-lg font-bold">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      <div className="text-xs opacity-80">{label}</div>
-    </div>
-  );
-}
-
-function KPICard({ title, value, subtitle, icon, color, alert = false, trend }: any) {
-  const colorClasses: Record<string, string> = {
-    amber: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-    red: 'bg-red-500/10 border-red-500/20 text-red-400',
-    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    green: 'bg-green-500/10 border-green-500/20 text-green-400',
-  };
-  return (
-    <div className={`p-4 rounded-lg border ${alert ? 'border-red-500/50 bg-red-500/5' : colorClasses[color] || 'bg-navy-800/50 border-navy-700'}`}>
-      <div className="flex justify-between items-start mb-2">
-        <span className="text-navy-400 text-sm">{title}</span>
-        {icon}
+    <Link href={href} className={`block bg-navy-900 border p-5 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:bg-navy-850/60 ${color} group`}>
+      <div className="flex justify-between items-start mb-3">
+        <div className="p-2.5 bg-navy-950 rounded-xl group-hover:scale-110 transition-transform">
+          {icon}
+        </div>
+        <span className="text-[10px] font-bold bg-navy-950 px-2 py-1 rounded-md text-navy-400 border border-navy-800">
+          {badge}
+        </span>
       </div>
-      <div className="text-2xl font-bold">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      {subtitle && <div className="text-xs text-navy-400 mt-1">{subtitle}</div>}
-      {trend === 'up' && <div className="text-xs text-green-400 mt-1">↑ Healthy</div>}
-    </div>
-  );
-}
-
-function ApplicationBar({ label, value, total, color }: any) {
-  const percent = total > 0 ? Math.round((value / total) * 100) : 0;
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-navy-300">{label}</span>
-        <span className="text-navy-400">{value.toLocaleString()} ({percent}%)</span>
-      </div>
-      <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
-        <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function ActuationItem({ label, value, total }: any) {
-  const percent = total > 0 ? Math.round((value / total) * 100) : 0;
-  return (
-    <div className="flex justify-between items-center py-2 border-b border-navy-800 last:border-0">
-      <span className="text-navy-300 text-sm">{label}</span>
-      <div className="text-right">
-        <span className="text-navy-100 font-medium">{value.toLocaleString()}</span>
-        <span className="text-navy-500 text-xs ml-2">({percent}%)</span>
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: any) {
-  const styles: Record<string, string> = {
-    completed: 'bg-green-500/20 text-green-400',
-    in_progress: 'bg-blue-500/20 text-blue-400',
-    pending: 'bg-yellow-500/20 text-yellow-400',
-    assigned: 'bg-purple-500/20 text-purple-400',
-    cancelled: 'bg-red-500/20 text-red-400',
-  };
-  return <span className={`px-2 py-1 rounded text-xs capitalize ${styles[status] || 'bg-navy-700 text-navy-300'}`}>{status?.replace('_', ' ') || 'N/A'}</span>;
-}
-
-function QuickAction({ href, icon, label, color }: any) {
-  const colors: Record<string, string> = {
-    amber: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20',
-    blue: 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border-blue-500/20',
-    green: 'bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/20',
-    navy: 'bg-navy-800 hover:bg-navy-700 text-navy-300 border-navy-600',
-  };
-  return (
-    <Link href={href} className={`flex items-center gap-3 p-4 rounded-lg border transition ${colors[color]}`}>
-      {icon}
-      <span className="font-medium text-sm">{label}</span>
+      <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+        {title}
+        <ArrowRight className="h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-amber-400 rotate-180" />
+      </h3>
+      <p className="text-xs text-navy-400 mt-1.5 leading-relaxed">
+        {description}
+      </p>
     </Link>
+  );
+}
+
+{/* 🛠️ المكون البرمجي الفرعي لسطور توزيع المحطات */}
+function StationProgressRow({ label, value, percent, money }: any) {
+  return (
+    <div className="p-3 bg-navy-950/50 border border-navy-850 rounded-xl flex justify-between items-center">
+      <div>
+        <span className="text-white text-xs font-bold block">{label}</span>
+        <span className="text-[11px] text-navy-400 font-mono mt-0.5 block">{money}</span>
+      </div>
+      <div className="text-left">
+        <span className="text-amber-400 font-mono font-bold text-sm block">{value.toLocaleString()}</span>
+        <span className="text-navy-500 text-[10px] font-mono block">({percent}%)</span>
+      </div>
+    </div>
   );
 }
