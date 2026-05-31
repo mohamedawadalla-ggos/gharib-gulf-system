@@ -4,7 +4,7 @@
 // ✅ Force dynamic rendering - skip static generation to bypass SSR errors
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { 
@@ -44,10 +44,37 @@ export default function AssetsPage() {
   const [sortColumn, setSortColumn] = useState<SortColumn>('tag_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [total, setTotal] = useState(0);
+  
+  // ✅ For live search debounce
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchAssets();
+    
+    // ✅ Cleanup timeout on unmount
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, [statusFilter, serviceFilter, sortColumn, sortDirection]);
+
+  // ✅ Debounced fetch for live search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchAssets();
+    }, 300); // 300ms debounce
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   async function fetchAssets() {
     setLoading(true);
@@ -165,12 +192,13 @@ export default function AssetsPage() {
             <div className="flex-1 min-w-[200px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-navy-400" />
+                {/* ✅ FIXED: Live search - removed onKeyDown, added debounce via useEffect */}
                 <input
                   type="text"
                   placeholder="Search tag or location..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && fetchAssets()}
+                  // ✅ Removed: onKeyDown={(e) => e.key === 'Enter' && fetchAssets()}
                   className="w-full pl-9 pr-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -199,7 +227,7 @@ export default function AssetsPage() {
             </select>
 
             <button 
-              onClick={() => { setSearchTerm(''); setStatusFilter('all'); setServiceFilter('all'); fetchAssets(); }}
+              onClick={() => { setSearchTerm(''); setStatusFilter('all'); setServiceFilter('all'); }}
               className="px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm transition"
             >
               Clear
