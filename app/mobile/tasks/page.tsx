@@ -51,68 +51,74 @@ export default function MobileTasksPage() {
     requestLocation();
   }, []);
 
-  async function fetchTasks() {
-    setLoading(true);
-    try {
-      // Get today's assigned tasks for mobile users
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data, error } = await supabase
-        .from('work_order_items')
-        .select(`
+async function fetchTasks() {
+  setLoading(true);
+  try {
+    // Get today's assigned tasks for mobile users
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data, error } = await supabase
+      .from('work_order_items')
+      .select(`
+        id,
+        status,
+        notes,
+        asset:assets_clean (
           id,
-          status,
-          notes,
-          asset:assets_clean (
-            id,
-            tag_number,
-            location_code,
-            maintenance_status,
-            criticality,
-            condition,
-            stations (code)
-          ),
-          work_order:work_orders (
-            id,
-            priority,
-            due_date,
-            assigned_crew
-          )
-        `)
-        .eq('status', 'pending')
-        .lte('work_orders.due_date', today)
-        .order('work_orders.due_date', { ascending: true });
+          tag_number,
+          location_code,
+          maintenance_status,
+          criticality,
+          condition,
+          stations (code)
+        ),
+        work_order:work_orders (
+          id,
+          priority,
+          due_date,
+          assigned_crew
+        )
+      `)
+      .eq('status', 'pending')
+      .lte('work_order.due_date', today);  // ✅ Fixed: use work_order (alias), not work_orders
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const formattedTasks: Task[] = (data || []).map((item: any) => ({
-        id: item.id,
-        asset_id: item.asset?.id,
-        work_order_id: item.work_order?.id,
-        assigned_to: item.work_order?.assigned_crew,
-        status: item.status,
-        due_date: item.work_order?.due_date,
-        priority: item.work_order?.priority,
-        notes: item.notes,
-        asset: {
-          id: item.asset?.id,
-          tag_number: item.asset?.tag_number,
-          location_code: item.asset?.location_code,
-          station_code: item.asset?.stations?.code,
-          maintenance_status: item.asset?.maintenance_status,
-          criticality: item.asset?.criticality,
-          condition: item.asset?.condition
-        }
-      }));
+    // ✅ Sort client-side instead of in query
+    const sortedData = (data || []).sort((a: any, b: any) => {
+      const dateA = a.work_order?.due_date || '';
+      const dateB = b.work_order?.due_date || '';
+      return dateA.localeCompare(dateB);
+    });
 
-      setTasks(formattedTasks);
-    } catch (err: any) {
-      console.error('Error fetching tasks:', err);
-      setError('Failed to load tasks. Please refresh.');
-    } finally {
-      setLoading(false);
-    }
+    const formattedTasks: Task[] = sortedData.map((item: any) => ({
+      id: item.id,
+      asset_id: item.asset?.id,
+      work_order_id: item.work_order?.id,
+      assigned_to: item.work_order?.assigned_crew,
+      status: item.status,
+      due_date: item.work_order?.due_date,
+      priority: item.work_order?.priority,
+      notes: item.notes,
+      asset: {
+        id: item.asset?.id,
+        tag_number: item.asset?.tag_number,
+        location_code: item.asset?.location_code,
+        station_code: item.asset?.stations?.code,
+        maintenance_status: item.asset?.maintenance_status,
+        criticality: item.asset?.criticality,
+        condition: item.asset?.condition
+      }
+    }));
+
+    setTasks(formattedTasks);
+  } catch (err: any) {
+    console.error('Error fetching tasks:', err);
+    setError('Failed to load tasks. Please refresh.');
+  } finally {
+    setLoading(false);
   }
+}
 
   function requestLocation() {
     if ('geolocation' in navigator) {
