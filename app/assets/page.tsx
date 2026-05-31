@@ -1,264 +1,306 @@
 // app/assets/page.tsx
 'use client';
+
+// ✅ Force dynamic rendering - skip static generation to bypass SSR toast error
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { AssetFilters } from './_components/asset-filters';
-import { AssetTable } from './_components/asset-table';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { 
+  Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, 
+  Package, AlertTriangle, CheckCircle, Clock, MapPin,
+  Eye, Wrench, Settings
+} from 'lucide-react';
 
-// ✅ ADD THESE IMPORTS AT THE TOP
-import { Download } from 'lucide-react';
-import { downloadCSV } from '@/lib/export-csv';
-import { useToast } from '@/hooks/useToast';
+const supabase = createSupabaseBrowserClient();
 
-// 1. Initialize Supabase Client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-// 2. Helper to format errors
-function formatError(err: any): string {
-  if (!err) return 'Unknown error';
-  if (typeof err === 'string') return err;
-  return err.message || err.details || err.hint || JSON.stringify(err) || 'Unknown error';
+// === TypeScript Interfaces ===
+interface Asset {
+  id: string;
+  tag_number: string;
+  location_code: string | null;
+  detailed_location: string | null;
+  manufacturer: string | null;
+  service_type: string | null;
+  condition: string | null;
+  maintenance_status: string | null;
+  sct_code: string | null;
+  station_id: string | null;
+  stations?: { code: string; name: string } | null;
 }
 
+type SortColumn = 'tag_number' | 'location_code' | 'manufacturer' | 'service_type' | 'condition' | 'maintenance_status';
+type SortDirection = 'asc' | 'desc';
+
 export default function AssetsPage() {
-  // 3. State Management
-  const [assets, setAssets] = useState<any[]>([]);        // Current page assets
-  const [allAssets, setAllAssets] = useState<any[]>([]);  // All fetched assets (cache)
-  const [stations, setStations] = useState<any[]>([]);
-  const [statuses, setStatuses] = useState<string[]>([]);
-  const [criticalities, setCriticalities] = useState<string[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [filters, setFilters] = useState({
-    search: '',
-    status: 'all',
-    station: 'all',
-    criticality: 'all'
-  });
-  
-  const limit = 20;
-  
-  // ✅ ADD THIS HOOK
-  const { showToast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [serviceFilter, setServiceFilter] = useState('all');
+  const [sortColumn, setSortColumn] = useState<SortColumn>('tag_number');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [total, setTotal] = useState(0);
 
-  // 4. Initial Data Fetching
   useEffect(() => {
-    fetchStations();
-    fetchFilterOptions();
-  }, []);
+    fetchAssets();
+  }, [statusFilter, serviceFilter, sortColumn, sortDirection]);
 
-  // 5. Fetch All Assets once Stations are ready
-  useEffect(() => {
-    if (stations.length > 0) {
-      fetchAllAssets();
-    }
-  }, [stations]);
-
-  // 6. Apply Filters & Pagination on client-side
-  useEffect(() => {
-    applyFiltersAndPaginate();
-  }, [currentPage, filters, allAssets]);
-
-  // --- Data Fetching Functions ---
-  async function fetchStations() {
-    try {
-      const { data, error } = await supabase
-        .from('stations')
-        .select('id, code, name')
-        .is('deleted_at', null)
-        .order('code');
-
-      if (error) throw error;
-      setStations(data || []);
-    } catch (err: any) {
-      console.error('Station fetch error:', formatError(err));
-    }
-  }
-
-  async function fetchFilterOptions() {
-    try {
-      // ✅ Fetching from 'assets_clean' view to avoid timestamp errors
-      const { data, error } = await supabase
-        .from('assets_clean')
-        .select('maintenance_status, criticality')
-        .limit(500);
-
-      if (error) throw error;
-      
-      if (data) {
-        setStatuses([...new Set(data.map(a => a.maintenance_status).filter(Boolean))]);
-        setCriticalities([...new Set(data.map(a => a.criticality).filter(Boolean))]);
-      }
-    } catch (err: any) {
-      console.error('Filter options error:', formatError(err));
-    }
-  }
-
-  async function fetchAllAssets() {
+  async function fetchAssets() {
     setLoading(true);
-    setError(null);
     try {
-      let allData: any[] = [];
-      let offset = 0;
-      const chunkSize = 1000;
+      console.log('🔍 Fetching assets...');
+      
+      let query = supabase
+        .from('assets_clean')
+        .select(`
+          *,
+          stations (code, name)
+        `, { count: 'exact' });
 
-      while (true) {
-        // ✅ CRITICAL: Query 'assets_clean' view, not 'assets' table
-        const { data: chunk, error } = await supabase
-          .from('assets_clean') 
-          .select('id, tag_number, station_id, maintenance_status, criticality, condition, location_code', { count: 'exact' })
-          .order('tag_number', { ascending: true })
-          .range(offset, offset + chunkSize - 1);
-
-        if (error) throw error;
-        if (!chunk || chunk.length === 0) break;
-
-        allData = [...allData, ...chunk];
-        offset += chunkSize;
-        if (chunk.length < chunkSize) break;
+      // Apply filters
+      if (statusFilter !== 'all') {
+        query = query.eq('maintenance_status', statusFilter);
+      }
+      if (serviceFilter !== 'all') {
+        query = query.eq('service_type', serviceFilter);
+      }
+      if (searchTerm) {
+        query = query.or(`tag_number.ilike.%${searchTerm}%,location_code.ilike.%${searchTerm}%`);
       }
 
-      // Enrich with Station Details
-      const stationMap = new Map(stations.map(s => [s.id, { code: s.code, name: s.name }]));
-      const enriched = allData.map(a => ({ 
-        ...a, 
-        stations: a.station_id ? stationMap.get(a.station_id) : null 
-      }));
+      // Apply sorting
+      query = query.order(sortColumn, { ascending: sortDirection === 'asc' });
+
+      const { data, error, count } = await query;
       
-      setAllAssets(enriched);
+      if (error) {
+        console.error('❌ Error:', error);
+        throw error;
+      }
+
+      console.log('✅ Fetched:', data?.length || 0, 'assets');
+      setAssets(data || []);
+      setTotal(count || 0);
       
     } catch (err: any) {
-      setError(formatError(err));
+      console.error('🚨 Fetch failed:', err);
     } finally {
       setLoading(false);
     }
   }
 
-  // --- Client-Side Logic ---
-  function applyFiltersAndPaginate() {
-    let filtered = [...allAssets];
-    
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(a => a.maintenance_status === filters.status);
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
     }
-    if (filters.criticality !== 'all') {
-      filtered = filtered.filter(a => a.criticality === filters.criticality);
-    }
-    if (filters.station !== 'all') {
-      filtered = filtered.filter(a => a.stations?.code === filters.station);
-    }
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      filtered = filtered.filter(a => 
-        a.tag_number?.toLowerCase().includes(q) || 
-        a.location_code?.toLowerCase().includes(q)
-      );
-    }
-
-    const start = (currentPage - 1) * limit;
-    setAssets(filtered.slice(start, start + limit));
-    setTotalPages(Math.ceil(filtered.length / limit));
-  }
-
-  const updateFilter = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
   };
 
-  // ✅ ADD THIS EXPORT FUNCTION
-  const handleExport = () => {
-    // Export the currently filtered data (assets state)
-    // Note: If you want to export ALL data regardless of pagination, use 'allAssets'
-    const dataToExport = allAssets.map(a => ({
-      Tag: a.tag_number,
-      Location: a.location_code,
-      Status: a.maintenance_status,
-      Criticality: a.criticality,
-      Condition: a.condition
-    }));
-    
-    downloadCSV(dataToExport, 'asset_registry');
-    showToast(`Exported ${dataToExport.length} assets`, 'success');
+  const SortIcon = ({ column }: { column: SortColumn }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="w-3 h-3 text-amber-400" />
+      : <ArrowDown className="w-3 h-3 text-amber-400" />;
   };
 
-  // --- UI Rendering ---
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'completed':
+      case 'up_to_date':
+        return { bg: 'bg-green-500/20', text: 'text-green-400', icon: CheckCircle, label: 'Good' };
+      case 'scheduled':
+      case 'due_soon':
+        return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: Clock, label: 'Due Soon' };
+      case 'overdue':
+        return { bg: 'bg-red-500/20', text: 'text-red-400', icon: AlertTriangle, label: 'Overdue' };
+      default:
+        return { bg: 'bg-navy-700/50', text: 'text-navy-300', icon: Clock, label: 'Unknown' };
+    }
+  };
+
+  const getServiceColor = (service: string) => {
+    switch (service?.toLowerCase()) {
+      case 'oil': return 'text-amber-400';
+      case 'water': return 'text-blue-400';
+      case 'gas': return 'text-green-400';
+      default: return 'text-navy-300';
+    }
+  };
+
   if (loading && assets.length === 0) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center text-navy-300">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
-          <p>Loading assets...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center p-6">
-        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6 text-center max-w-lg">
-          <h2 className="text-xl font-semibold text-red-400 mb-2">Database Error</h2>
-          <p className="text-navy-300 mb-4 break-all text-sm">{error}</p>
-          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded">Retry</button>
-        </div>
+      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
+        <p className="text-navy-300">Loading assets...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 text-navy-50 p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-wrap justify-between items-center gap-4">
+    <div className="min-h-screen bg-navy-950 text-navy-50 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-navy-50">Asset Registry</h1>
-            <p className="text-navy-300 mt-1">
-              Manage valves across {stations.length} stations
-            </p>
+            <h1 className="text-2xl md:text-3xl font-bold text-amber-400">🔩 Asset Registry</h1>
+            <p className="text-navy-300 mt-1 text-sm">{total.toLocaleString()} valves tracked</p>
           </div>
-          
-          {/* ✅ ADD EXPORT BUTTON HERE */}
           <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm text-navy-200 transition-colors"
+            onClick={() => router.push('/assets/new')}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg font-medium transition"
           >
-            <Download className="w-4 h-4 text-amber-400" />
-            Export CSV
+            <Package className="w-4 h-4" /> Add Asset
           </button>
         </div>
+
+        {/* Filters */}
+        <div className="bg-navy-900 p-4 rounded-lg border border-navy-700 mb-6">
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-navy-400" />
+                <input
+                  type="text"
+                  placeholder="Search tag or location..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchAssets()}
+                  className="w-full pl-9 pr-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+            
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+            >
+              <option value="all">All Status</option>
+              <option value="up_to_date">Up to Date</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="overdue">Overdue</option>
+            </select>
+
+            <select 
+              value={serviceFilter} 
+              onChange={(e) => setServiceFilter(e.target.value)}
+              className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+            >
+              <option value="all">All Services</option>
+              <option value="oil">Oil</option>
+              <option value="water">Water</option>
+              <option value="gas">Gas</option>
+            </select>
+
+            <button 
+              onClick={() => { setSearchTerm(''); setStatusFilter('all'); setServiceFilter('all'); fetchAssets(); }}
+              className="px-3 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 rounded-lg text-sm transition"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        {assets.length === 0 ? (
+          <div className="bg-navy-900 rounded-lg border border-navy-700 p-12 text-center">
+            <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+            <p className="text-navy-300 mb-4">No assets found matching your filters</p>
+            <button onClick={fetchAssets} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-navy-950 rounded-lg transition">
+              Refresh
+            </button>
+          </div>
+        ) : (
+          <div className="bg-navy-900 rounded-lg border border-navy-700 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-navy-800 border-b border-navy-700">
+                  <tr>
+                    {(['tag_number', 'location_code', 'manufacturer', 'service_type', 'condition', 'maintenance_status'] as SortColumn[]).map((col) => (
+                      <th 
+                        key={col} 
+                        onClick={() => handleSort(col)}
+                        className="text-left px-4 py-3 text-sm font-medium text-navy-300 cursor-pointer hover:bg-navy-700 transition select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          {col.replace('_', ' ').toUpperCase()}
+                          <SortIcon column={col} />
+                        </div>
+                      </th>
+                    ))}
+                    <th className="text-left px-4 py-3 text-sm font-medium text-navy-300">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-navy-800">
+                  {assets.map((asset) => {
+                    const statusConfig = getStatusBadge(asset.maintenance_status || '');
+                    const StatusIcon = statusConfig.icon;
+                    return (
+                      <tr key={asset.id} className="hover:bg-navy-800/50 transition">
+                        <td className="px-4 py-3 font-mono text-sm text-amber-400">{asset.tag_number}</td>
+                        <td className="px-4 py-3 text-navy-100">
+                          {asset.location_code || 'N/A'}
+                          {asset.stations?.code && (
+                            <p className="text-xs text-navy-400">{asset.stations.code}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-navy-300">{asset.manufacturer || 'Unknown'}</td>
+                        <td className={`px-4 py-3 text-sm font-medium ${getServiceColor(asset.service_type)}`}>
+                          {asset.service_type?.toUpperCase() || 'N/A'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs capitalize ${
+                            asset.condition === 'good' ? 'bg-green-500/20 text-green-400' :
+                            asset.condition === 'poor' ? 'bg-red-500/20 text-red-400' :
+                            'bg-navy-700/50 text-navy-300'
+                          }`}>
+                            {asset.condition || 'Unknown'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${statusConfig.bg} ${statusConfig.text}`}>
+                            <StatusIcon className="w-3 h-3" /> {statusConfig.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => router.push(`/assets/${asset.id}`)} 
+                              className="p-1 text-navy-400 hover:text-amber-400 transition"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => router.push(`/work-orders/new?asset=${asset.id}`)} 
+                              className="p-1 text-navy-400 hover:text-blue-400 transition"
+                              title="Create Work Order"
+                            >
+                              <Wrench className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-6 text-center text-xs text-navy-500">
+          <p>Showing {assets.length} of {total.toLocaleString()} assets • Updated {new Date().toLocaleTimeString()}</p>
+        </div>
       </div>
-
-      {/* Filters */}
-      <AssetFilters 
-        initialSearch={filters.search}
-        initialStatus={filters.status}
-        initialStation={filters.station}
-        initialCriticality={filters.criticality}
-        stations={stations}
-        statuses={statuses}
-        criticalities={criticalities}
-        onFilterChange={updateFilter}
-      />
-
-      {/* Summary */}
-      <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-navy-300">
-          Showing {assets.length} of {allAssets.length} assets
-        </p>
-      </div>
-
-      {/* Table */}
-      <AssetTable 
-        assets={assets} 
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
     </div>
   );
 }
