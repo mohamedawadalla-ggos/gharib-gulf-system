@@ -91,7 +91,7 @@ export default function MobileTasksPage() {
           )
         `)
         .eq('status', 'pending')
-        .lte('work_order.due_date', today);
+        .lte('work_orders.due_date', today);
         // ❌ REMOVED: .order('work_order.due_date', { ascending: true }) 
         // PostgREST doesn't support ordering by nested foreign table columns
 
