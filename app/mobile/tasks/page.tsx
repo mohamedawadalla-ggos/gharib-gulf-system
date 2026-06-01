@@ -6,13 +6,8 @@ import { Loader2, AlertCircle, Calendar, MapPin, ChevronRight } from 'lucide-rea
 import Link from 'next/link';
 
 // --- Types ---
-interface WorkOrder {
-  id: string;
-  title: string;
-  due_date: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  assigned_crew: string | null;
-  status: string;
+interface Station {
+  code: string | null;
 }
 
 interface Asset {
@@ -22,15 +17,24 @@ interface Asset {
   maintenance_status: string | null;
   criticality: string | null;
   condition: string | null;
-  stations: { code: string } | null;
+  stations: Station | null;
+}
+
+interface WorkOrder {
+  id: string;
+  title?: string;
+  due_date: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent' | null;
+  assigned_crew: string | null;
+  status: string | null;
 }
 
 interface Task {
   id: string;
   status: string;
   notes: string | null;
-  asset_id: string;
-  work_order_id: string;
+  asset_id: string | null;
+  work_order_id: string | null;
   completed_at: string | null;
   created_at: string;
   asset: Asset | null;
@@ -41,14 +45,14 @@ export default function MobileTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const supabase = createClient();
 
   useEffect(() => {
     async function fetchTasks() {
       try {
         setLoading(true);
-        const supabase = createClient();
-
-        // ✅ FIXED: Proper Supabase query syntax for foreign table filtering & ordering
+        
         const { data, error } = await supabase
           .from('work_order_items')
           .select(`
@@ -78,22 +82,21 @@ export default function MobileTasksPage() {
             )
           `)
           .eq('status', 'pending')
-          .filter('work_order.due_date', 'lte', '2026-05-31') // ✅ Fixed: use .filter() for foreign table
-          .order('due_date', { foreignTable: 'work_order', ascending: true }) // ✅ Fixed: proper foreign table ordering
-          .limit(50); // Optional: prevent overload
+          .lte('work_order.due_date', '2026-05-31')
+          .order('due_date', { foreignTable: 'work_order', ascending: true });
 
         if (error) throw error;
         setTasks(data || []);
       } catch (err: any) {
         console.error('❌ Error fetching tasks:', err);
-        setError(err?.message || 'Failed to load tasks. Please check your connection.');
+        setError(err.message || 'Failed to load tasks. Please check your connection.');
       } finally {
         setLoading(false);
       }
     }
 
     fetchTasks();
-  }, []); // ✅ Removed supabase from deps to avoid re-fetch on client re-init
+  }, [supabase]);
 
   // --- Loading State ---
   if (loading) {
@@ -172,7 +175,7 @@ export default function MobileTasksPage() {
                   task.work_order?.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
                   'bg-blue-100 text-blue-700'
                 }`}>
-                  {task.work_order?.priority || 'Normal'}
+                  {task.work_order?.priority?.toUpperCase() || 'NORMAL'}
                 </span>
               </div>
 
