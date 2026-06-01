@@ -48,35 +48,27 @@ export default function MobileTasksPage() {
     try {
       setLoading(true);
       setError(null);
+// Fetch data without ordering by joined field
+const { data, error } = await supabase
+  .from('work_order_items')
+  .select(`
+    id,
+    status,
+    notes,
+    asset_id,
+    work_order_id,
+    completed_at,
+    created_at,
+    asset:assets_clean!inner(id, tag_number, location_code, maintenance_status, criticality, condition, stations(code)),
+    work_order:work_orders!inner(id, priority, due_date, assigned_crew, status)
+  `)
+  .eq('status', 'pending')
+  .lte('work_order.due_date', '2026-05-31');
 
-      const { data, error: queryError } = await supabase
-        .from('work_order_items')
-        .select(`
-          id,
-          status,
-          notes,
-          asset_id,
-          work_order_id,
-          completed_at,
-          created_at,
-          asset:assets_clean!inner (
-            id,
-            tag_number,
-            location_code,
-            maintenance_status,
-            condition,
-            stations (
-              code
-            )
-          ),
-          work_order:work_orders!inner (
-            id,
-            priority,
-            due_date,
-            assigned_crew,
-            statusaswo_status
-          )
-        `)
+// Sort client-side after fetching
+if (data) {
+  data.sort((a, b) => new Date(a.work_order.due_date) - new Date(b.work_order.due_date));
+}
         .eq('status', 'pending')
         .lte('work_order.due_date', new Date().toISOString().split('T')[0]);
 
