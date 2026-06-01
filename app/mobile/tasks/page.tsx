@@ -51,54 +51,49 @@ export default function MobileTasksPage() {
     requestLocation();
   }, []);
 
-  async function fetchTasks() {
-    setLoading(true);
-    setError(null);
+async function fetchTasks() {
+  setLoading(true);
+  try {
+    const today = new Date().toISOString().split('T')[0];
     
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      console.log('🔍 Fetching mobile tasks for date:', today);
-      
-      // ✅ Fetch from work_order_items with nested relations
-      // ⚠️ NOTE: Cannot use .order() on nested foreign table columns
-      // We sort client-side instead
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('work_order_items')
-        .select(`
+    console.log('🔍 Fetching mobile tasks for date:', today);
+    
+    const { data, error } = await supabase
+      .from('work_order_items')
+      .select(`
+        id,
+        status,
+        notes,
+        asset_id,
+        work_order_id,
+        completed_at,
+        created_at,
+        asset:assets_clean!inner (
           id,
-          status,
-          notes,
-          asset_id,
-          work_order_id,
-          completed_at,
-          created_at,
-          asset:assets_clean!inner (
-            id,
-            tag_number,
-            location_code,
-            maintenance_status,
-            criticality,
-            condition,
-            stations (code)
-          ),
-          work_order:work_orders!inner (
-            id,
-            priority,
-            due_date,
-            assigned_crew,
-            status as wo_status
-          )
-        `)
-        .eq('status', 'pending')
-        .lte('work_orders.due_date', today);
-        // ❌ REMOVED: .order('work_order.due_date', { ascending: true }) 
-        // PostgREST doesn't support ordering by nested foreign table columns
+          tag_number,
+          location_code,
+          maintenance_status,
+          criticality,
+          condition,
+          stations (code)
+        ),
+        work_order:work_orders!inner (
+          id,
+          priority,
+          due_date,
+          assigned_crew,
+          status:wo_status
+        )
+      `)
+      .eq('status', 'pending')
+      .lte('work_order.due_date', today);
 
-      if (itemsError) {
-        console.error('❌ Work order items error:', itemsError);
-        throw itemsError;
-      }
+    if (error) {
+      console.error('❌ Work order items error:', error);
+      throw error;
+    }
+
+    // ... rest of your function
 
       console.log('✅ Fetched work order items:', itemsData?.length || 0);
 
