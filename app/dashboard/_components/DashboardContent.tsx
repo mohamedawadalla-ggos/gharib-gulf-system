@@ -374,7 +374,12 @@ function StatusBadge({ status }: { status: string }) {
   };
   return <span className={`px-2 py-1 rounded text-xs capitalize ${styles[status] || 'bg-navy-700 text-navy-300'}`}>{status?.replace('_', ' ') || 'N/A'}</span>;
 }
-
+<QuickAction 
+  href="/mobile/tasks" 
+  icon={<Smartphone />} 
+  label="Service Entry" 
+  color="green" 
+/>
 function QuickAction({ href, icon, label, color }: { href: string; icon: React.ReactNode; label: string; color: string }) {
   const colors: Record<string, string> = {
     amber: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20',

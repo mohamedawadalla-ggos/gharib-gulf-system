@@ -6,14 +6,14 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { 
   Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, 
   Package, AlertTriangle, CheckCircle, Clock, MapPin,
   Eye, Wrench, Settings
 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 // === TypeScript Interfaces ===
 interface Asset {

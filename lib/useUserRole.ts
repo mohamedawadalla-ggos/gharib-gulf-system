@@ -2,13 +2,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 
 export function useUserRole() {
   const [role, setRole] = useState<string | null>(null);
   const [companyCode, setCompanyCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createSupabaseBrowserClient();
+  const supabase = createClient();
 
   useEffect(() => {
     async function fetchUserRole() {

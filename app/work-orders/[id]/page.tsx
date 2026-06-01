@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { useUserRole } from '@/lib/useUserRole';
 import { useToast } from '@/hooks/useToast';
 import Link from 'next/link';
@@ -13,7 +13,7 @@ import {
   FileSpreadsheet, Plus, ArrowRight, X, Loader2
 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 // TypeScript Interfaces
 interface Asset {

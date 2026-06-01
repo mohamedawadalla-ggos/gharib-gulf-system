@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { ArrowLeft, AlertCircle, Search, Plus, Trash2 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 export default function NewWorkOrderPage() {
   const router = useRouter();

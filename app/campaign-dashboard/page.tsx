@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { 
   AlertTriangle, 
   CheckCircle, 
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 interface CampaignStats {
   totalWorkOrders: number;

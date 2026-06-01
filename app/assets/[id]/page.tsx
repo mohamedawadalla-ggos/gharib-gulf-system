@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { 
   ArrowLeft, 
   Wrench, 
@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 // === TypeScript Interfaces ===
 interface Station {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { 
   Calendar, 
@@ -17,7 +17,7 @@ import {
   Send
 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 interface Campaign {
   id: string;
@@ -47,7 +47,7 @@ export default function DailyAssignmentsPage() {
   const [formData, setFormData] = useState({
     request_date: new Date().toISOString().split('T')[0],
     requested_by: 'Khalda Production Dept',
-    priority: 'normal',
+    priority: 'medium',
     assigned_crew: '',
     notes: ''
   });
@@ -70,7 +70,6 @@ export default function DailyAssignmentsPage() {
   async function fetchAvailableValves() {
     setLoading(true);
     try {
-      // Get valves that are not yet completed or in active work orders
       const { data, error } = await supabase
         .from('assets_clean')
         .select(`
@@ -134,7 +133,6 @@ export default function DailyAssignmentsPage() {
     setSubmitting(true);
     
     try {
-      // 1. Create work order
       const workOrderNumber = `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
       
       const { data: workOrder, error: woError } = await supabase
@@ -143,7 +141,7 @@ export default function DailyAssignmentsPage() {
           work_order_number: workOrderNumber,
           title: `Daily Assignment - ${formData.request_date} - ${formData.requested_by}`,
           description: `Priority: ${formData.priority}. ${selectedValves.length} valves assigned. ${formData.notes}`,
-          priority: formData.priority === 'emergency' ? 'urgent' : formData.priority,
+          priority: formData.priority,
           status: 'assigned',
           assigned_crew: formData.assigned_crew,
           due_date: formData.request_date,
@@ -154,7 +152,6 @@ export default function DailyAssignmentsPage() {
 
       if (woError) throw woError;
 
-      // 2. Create work order items
       const items = selectedValves.map(valve => ({
         work_order_id: workOrder.id,
         asset_id: valve.id,
@@ -167,7 +164,6 @@ export default function DailyAssignmentsPage() {
 
       if (itemsError) throw itemsError;
 
-      // 3. Create daily assignment record
       const { error: assignmentError } = await supabase
         .from('daily_assignments')
         .insert({
@@ -188,7 +184,6 @@ export default function DailyAssignmentsPage() {
 
       alert(`✅ Daily assignment created!\nWork Order: ${workOrderNumber}\nValves: ${selectedValves.length}`);
       
-      // Reset form
       setSelectedValves([]);
       setFormData({
         ...formData,
@@ -196,7 +191,6 @@ export default function DailyAssignmentsPage() {
         notes: ''
       });
       
-      // Refresh available valves
       fetchAvailableValves();
       
     } catch (err: any) {
@@ -209,13 +203,13 @@ export default function DailyAssignmentsPage() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'emergency': return 'border-red-500 focus:ring-red-500';
+      case 'urgent': return 'border-red-500 focus:ring-red-500';
       case 'high': return 'border-orange-500 focus:ring-orange-500';
-      default: return 'border-navy-600 focus:ring-amber-500';
+      case 'medium': return 'border-amber-500 focus:ring-amber-500';
+      default: return 'border-navy-600 focus:ring-green-500';
     }
   };
 
-  // Campaign progress stats
   const campaignProgress = {
     total: campaign?.total_valves_target || 5758,
     completed: availableValves.length,
@@ -226,13 +220,11 @@ export default function DailyAssignmentsPage() {
   return (
     <div className="min-h-screen bg-navy-950 text-navy-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-navy-50">Daily Assignments</h1>
           <p className="text-navy-300 mt-1">Create work orders for Khalda's production team</p>
         </div>
 
-        {/* Campaign Progress Banner */}
         <div className="bg-gradient-to-r from-navy-800 to-navy-900 rounded-lg p-4 mb-6 border border-navy-700">
           <div className="flex flex-wrap justify-between items-center gap-4">
             <div>
@@ -257,7 +249,6 @@ export default function DailyAssignmentsPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - Valve Selection */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-navy-900 rounded-lg border border-navy-700 p-4">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -265,7 +256,6 @@ export default function DailyAssignmentsPage() {
                 Select Valves for Today
               </h2>
               
-              {/* Search and Filters */}
               <div className="flex flex-wrap gap-3 mb-4">
                 <div className="flex-1 min-w-[200px]">
                   <div className="relative">
@@ -291,7 +281,6 @@ export default function DailyAssignmentsPage() {
                 </select>
               </div>
 
-              {/* Valves List */}
               {loading ? (
                 <div className="text-center py-8 text-navy-400">Loading valves...</div>
               ) : (
@@ -336,7 +325,6 @@ export default function DailyAssignmentsPage() {
             </div>
           </div>
 
-          {/* Right Panel - Assignment Form */}
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-4">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Send className="w-5 h-5 text-amber-400" />
@@ -373,9 +361,9 @@ export default function DailyAssignmentsPage() {
                   onChange={(e) => setFormData({...formData, priority: e.target.value})}
                   className={`w-full p-2 bg-navy-800 border rounded-lg focus:outline-none ${getPriorityColor(formData.priority)}`}
                 >
-                  <option value="emergency">🚨 Emergency</option>
+                  <option value="urgent">🚨 Urgent</option>
                   <option value="high">🔴 High</option>
-                  <option value="normal">🟡 Normal</option>
+                  <option value="medium">🟡 Medium</option>
                   <option value="low">🟢 Low</option>
                 </select>
               </div>
@@ -426,7 +414,6 @@ export default function DailyAssignmentsPage() {
           </div>
         </div>
 
-        {/* Recent Assignments Link */}
         <div className="mt-6 text-center">
           <Link 
             href="/campaign-dashboard" 

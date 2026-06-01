@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'; // Ensure this path matches your setup
+import { createClient } from '@/lib/supabase/client';
 
 export default function TaskExecution() {
   const params = useParams();
@@ -18,7 +18,7 @@ export default function TaskExecution() {
   const [success, setSuccess] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const supabase = createSupabaseBrowserClient();
+  const supabase = createClient();
 
   // Fetch Asset Details on Load
   useEffect(() => {

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useUserRole } from '@/lib/useUserRole';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import {
   Package, AlertTriangle, Clock, CheckCircle, Wrench,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import DashboardCharts from '@/components/DashboardCharts';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 export default function DashboardPage() {
   const { role, companyCode, isClient, loading: roleLoading } = useUserRole();

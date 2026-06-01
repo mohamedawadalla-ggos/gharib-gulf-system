@@ -3,13 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { 
   Plus, Search, Eye, AlertTriangle, CheckCircle, Clock,
   ArrowUpDown, ArrowUp, ArrowDown, Filter, Trash2, Loader2
 } from 'lucide-react';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 // === TypeScript Interfaces ===
 interface Asset {
