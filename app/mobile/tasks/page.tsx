@@ -51,85 +51,104 @@ export default function MobileTasksPage() {
     requestLocation();
   }, []);
 
-async function fetchTasks() {
-  setLoading(true);
-  setError(null);
-  
-  try {
-    const today = new Date().toISOString().split('T')[0];
+  async function fetchTasks() {
+    setLoading(true);
+    setError(null);
     
-    console.log('🔍 Fetching mobile tasks for date:', today);
-    
-    // ✅ Fetch from work_order_items (not assets directly!)
-    const { data: itemsData, error: itemsError } = await supabase
-      .from('work_order_items')
-      .select(`
-        id,
-        status,
-        notes,
-        asset_id,
-        work_order_id,
-        completed_at,
-        created_at,
-        asset:assets_clean!inner (
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      console.log('🔍 Fetching mobile tasks for date:', today);
+      
+      // ✅ Fetch from work_order_items with nested relations
+      // ⚠️ NOTE: Cannot use .order() on nested foreign table columns
+      // We sort client-side instead
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('work_order_items')
+        .select(`
           id,
-          tag_number,
-          location_code,
-          maintenance_status,
-          criticality,
-          condition,
-          stations (code)
-        ),
-        work_order:work_orders!inner (
-          id,
-          priority,
-          due_date,
-          assigned_crew,
-          status as wo_status
-        )
-      `)
-      .eq('status', 'pending')
-      .lte('work_order.due_date', today)
-      .order('work_order.due_date', { ascending: true });
+          status,
+          notes,
+          asset_id,
+          work_order_id,
+          completed_at,
+          created_at,
+          asset:assets_clean!inner (
+            id,
+            tag_number,
+            location_code,
+            maintenance_status,
+            criticality,
+            condition,
+            stations (code)
+          ),
+          work_order:work_orders!inner (
+            id,
+            priority,
+            due_date,
+            assigned_crew,
+            status as wo_status
+          )
+        `)
+        .eq('status', 'pending')
+        .lte('work_order.due_date', today);
+        // ❌ REMOVED: .order('work_order.due_date', { ascending: true }) 
+        // PostgREST doesn't support ordering by nested foreign table columns
 
-    if (itemsError) {
-      console.error('❌ Work order items error:', itemsError);
-      throw itemsError;
-    }
-
-    console.log('✅ Fetched work order items:', itemsData?.length || 0);
-
-    // Format the data
-    const formattedTasks: Task[] = (itemsData || []).map((item: any) => ({
-      id: item.id,
-      asset_id: item.asset_id,
-      work_order_id: item.work_order_id,
-      assigned_to: item.work_order?.assigned_crew,
-      status: item.status,
-      due_date: item.work_order?.due_date,
-      priority: item.work_order?.priority,
-      notes: item.notes,
-      asset: {
-        id: item.asset?.id,
-        tag_number: item.asset?.tag_number,
-        location_code: item.asset?.location_code,
-        station_code: item.asset?.stations?.code,
-        maintenance_status: item.asset?.maintenance_status,
-        criticality: item.asset?.criticality,
-        condition: item.asset?.condition
+      if (itemsError) {
+        console.error('❌ Work order items error:', itemsError);
+        throw itemsError;
       }
-    }));
 
-    console.log('📋 Formatted tasks:', formattedTasks.length);
-    setTasks(formattedTasks);
-    
-  } catch (err: any) {
-    console.error('🚨 Error fetching tasks:', err);
-    setError(err.message || 'Failed to load tasks. Please refresh.');
-  } finally {
-    setLoading(false);
+      console.log('✅ Fetched work order items:', itemsData?.length || 0);
+
+      // Format the data
+      const formattedTasks: Task[] = (itemsData || []).map((item: any) => ({
+        id: item.id,
+        asset_id: item.asset_id,
+        work_order_id: item.work_order_id,
+        assigned_to: item.work_order?.assigned_crew,
+        status: item.status,
+        due_date: item.work_order?.due_date,
+        priority: item.work_order?.priority,
+        notes: item.notes,
+        asset: {
+          id: item.asset?.id,
+          tag_number: item.asset?.tag_number,
+          location_code: item.asset?.location_code,
+          station_code: item.asset?.stations?.code,
+          maintenance_status: item.asset?.maintenance_status,
+          criticality: item.asset?.criticality,
+          condition: item.asset?.condition
+        }
+      }));
+
+      // ✅ Client-side sorting by due_date (ascending) then priority
+      const sortedTasks = formattedTasks.sort((a, b) => {
+        // Sort by due_date first (nulls last)
+        if (!a.due_date && !b.due_date) return 0;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        
+        const dateCompare = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        
+        // Then by priority (urgent > high > medium > low)
+        const priorityOrder: Record<string, number> = { urgent: 1, high: 2, medium: 3, low: 4 };
+        return (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99);
+      });
+
+      console.log('📋 Formatted & sorted tasks:', sortedTasks.length);
+      setTasks(sortedTasks);
+      
+    } catch (err: any) {
+      console.error('🚨 Error fetching tasks:', err);
+      setError(err.message || 'Failed to load tasks. Please refresh.');
+    } finally {
+      setLoading(false);
+    }
   }
-}
+
   function requestLocation() {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -322,14 +341,13 @@ async function fetchTasks() {
             )}
           </div>
 
-          {/* Notes - ✅ FIXED: Darker text color */}
+          {/* Notes */}
           <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 mb-4">
             <label className="block text-sm text-navy-300 mb-2">Notes</label>
             <textarea
               value={taskNotes}
               onChange={(e) => setTaskNotes(e.target.value)}
               placeholder="Add notes about this maintenance..."
-              // ✅ FIXED: text-navy-100 (bright white) + placeholder-navy-500 + font-medium
               className="w-full p-3 bg-navy-800 border border-navy-600 rounded-lg text-sm text-navy-100 placeholder-navy-500 font-medium focus:outline-none focus:border-amber-500 min-h-[100px]"
             />
           </div>
