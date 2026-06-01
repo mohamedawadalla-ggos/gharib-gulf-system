@@ -73,8 +73,11 @@ export default function MobileTasksPage() {
   `)
   .eq('status', 'pending')
   .lte('work_order.due_date', '2026-05-31')
-  .order('work_order(due_date)', { ascending: true });
-        if (queryError) throw queryError;
+  .order('due_date', { 
+  foreignTable: 'work_order', 
+  ascending: true 
+})
+        if (error) throw error;
         setTasks(data || []);
       } catch (err: any) {
         console.error(' Error fetching tasks:', err);
