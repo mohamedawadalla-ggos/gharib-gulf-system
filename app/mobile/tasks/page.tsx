@@ -1,275 +1,190 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client'
-import { format } from 'date-fns';
-import { arEG } from 'date-fns/locale';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client'; // Adjust path if your client is elsewhere
+import { Loader2, AlertCircle, Calendar, MapPin, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+
+// --- Types ---
+interface WorkOrder {
+  id: string;
+  title: string;
+  due_date: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+}
 
 interface Asset {
   id: string;
   tag_number: string;
-  location_code: string;
-  maintenance_status: string;
-  condition: string;
-  stations?: {
-    code: string;
-  };
+  location_code: string | null;
 }
 
-interface WorkOrder {
+interface Task {
   id: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string;
-  assigned_crew: string | null;
-  statusaswo_status: string;
-}
-
-interface WorkOrderItem {
-  id: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: string;
   notes: string | null;
-  asset_id: string;
-  work_order_id: string;
-  completed_at: string | null;
   created_at: string;
-  asset: Asset;
-  work_order: WorkOrder;
+  work_orders: WorkOrder | null;
+  assets: Asset | null;
 }
 
 export default function MobileTasksPage() {
-  const [tasks, setTasks] = useState<WorkOrderItem[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all');
-
+  
+  // Initialize Supabase client
   const supabase = createClient();
 
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-// Fetch data without ordering by joined field
-const { data, error } = await supabase
-  .from('work_order_items')
-  .select(`
-    id,
-    status,
-    notes,
-    asset_id,
-    work_order_id,
-    completed_at,
-    created_at,
-    asset:assets_clean!inner(id, tag_number, location_code, maintenance_status, criticality, condition, stations(code)),
-    work_order:work_orders!inner(id, priority, due_date, assigned_crew, status)
-  `)
-  .eq('status', 'pending')
-  .lte('work_order.due_date', '2026-05-31');
-
-// Sort client-side after fetching
-if (data) {
-  data.sort((a, b) => new Date(a.work_order.due_date) - new Date(b.work_order.due_date));
-}
-        .eq('status', 'pending')
-        .lte('work_order.due_date', new Date().toISOString().split('T')[0]);
-
-      if (queryError) throw queryError;
-
-      // Client-side sorting by due_date since Supabase order doesn't support nested table ordering directly
-      const sortedData = data?.sort((a, b) => {
-        return new Date(a.work_order.due_date).getTime() - 
-               new Date(b.work_order.due_date).getTime();
-      }) || [];
-
-      setTasks(sortedData);
-    } catch (err: any) {
-      console.error('🚨 Error fetching tasks:', err);
-      setError(err.message || 'فشل في تحميل المهام');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    async function fetchTasks() {
+      try {
+        setLoading(true);
+        
+        // ✅ CORRECTED SUPABASE QUERY
+        // The previous error `PGRST100` occurred because of incorrect foreign table ordering syntax.
+        // Use `.order('column', { foreignTable: 'table_name', ascending: true })` instead of dot notation.
+        const { data, error: queryError } = await supabase
+          .from('work_order_items')
+          .select(`
+            id,
+            status,
+            notes,
+            created_at,
+            work_orders!inner (
+              id,
+              title,
+              due_date,
+              priority
+            ),
+            assets!inner (
+              id,
+              tag_number,
+              location_code
+            )
+          `)
+          .eq('status', 'pending')
+          .order('due_date', { foreignTable: 'work_orders', ascending: true }) // ✅ FIXED ORDERING
+          .limit(50);
+
+        if (queryError) throw queryError;
+        setTasks(data || []);
+      } catch (err: any) {
+        console.error(' Error fetching tasks:', err);
+        setError(err.message || 'Failed to load tasks. Please check your connection.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
     fetchTasks();
-  }, []);
+  }, [supabase]);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending: 'قيد الانتظار',
-      in_progress: 'جاري التنفيذ',
-      completed: 'مكتمل'
-    };
-    return labels[status] || status;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'text-yellow-600 bg-yellow-50';
-      case 'in_progress': return 'text-blue-600 bg-blue-50';
-      case 'completed': return 'text-green-600 bg-green-50';
-      default: return 'text-gray-600 bg-gray-50';
-    }
-  };
-
-  const filteredTasks = tasks.filter(task => 
-    filter === 'all' ? true : task.status === filter
-  );
-
+  // --- Loading State ---
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">جاري تحميل المهام...</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <p className="text-gray-500 text-sm font-medium">Loading tasks...</p>
       </div>
     );
   }
 
+  // --- Error State ---
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full text-center">
-          <p className="text-red-600 font-medium mb-2">خطأ في التحميل</p>
-          <p className="text-red-500 text-sm mb-4">{error}</p>
+      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+        <div className="bg-white border border-red-200 rounded-xl shadow-sm p-6 max-w-sm w-full text-center">
+          <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Something went wrong</h2>
+          <p className="text-gray-500 text-sm mb-4">{error}</p>
           <button
-            onClick={fetchTasks}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+            onClick={() => window.location.reload()}
+            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition"
           >
-            إعادة المحاولة
+            Retry
           </button>
         </div>
       </div>
     );
   }
 
+  // --- Main UI ---
   return (
-    <div className="min-h-screen bg-gray-50 pb-24" dir="rtl">
+    <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="px-4 py-4">
-          <h1 className="text-xl font-bold text-gray-900">المهام الميدانية</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {filteredTasks.length} مهمة {filter !== 'all' && `(${getStatusLabel(filter)})`}
-          </p>
-        </div>
-        
-        {/* Filter Tabs */}
-        <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
-          {(['all', 'pending', 'in_progress', 'completed'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
-                filter === f
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {f === 'all' ? 'الكل' : getStatusLabel(f)}
-            </button>
-          ))}
+      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Mobile Tasks</h1>
+            <p className="text-xs text-gray-500 mt-0.5">{tasks.length} pending assignments</p>
+          </div>
+          <Calendar className="w-5 h-5 text-gray-400" />
         </div>
       </header>
 
-      {/* Tasks List */}
-      <main className="px-4 py-4 space-y-3">
-        {filteredTasks.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">لا توجد مهام لعرضها</p>
+      {/* Task List */}
+      <main className="p-4 space-y-3">
+        {tasks.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Calendar className="w-6 h-6 text-blue-500" />
+            </div>
+            <h3 className="font-semibold text-gray-900">All caught up!</h3>
+            <p className="text-gray-500 text-sm mt-1">No pending tasks assigned to you right now.</p>
           </div>
         ) : (
-          filteredTasks.map((task) => (
-            <article
+          tasks.map((task) => (
+            <Link
               key={task.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 active:scale-[0.99] transition-transform"
+              href={`/mobile/tasks/${task.id}`}
+              className="block bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:border-blue-200 hover:shadow-md transition-all active:scale-[0.99]"
             >
-              {/* Priority Indicator */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${getPriorityColor(task.work_order.priority)}`}></span>
-                  <span className="text-xs font-medium text-gray-500">
-                    {task.work_order.priority === 'critical' && 'حرج'}
-                    {task.work_order.priority === 'high' && 'عالي'}
-                    {task.work_order.priority === 'medium' && 'متوسط'}
-                    {task.work_order.priority === 'low' && 'منخفض'}
-                  </span>
+              {/* Top Row: Title & Priority */}
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex-1 pr-2">
+                  <h3 className="font-semibold text-gray-900 line-clamp-1">
+                    {task.work_orders?.title || 'Untitled Task'}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    Due: {task.work_orders?.due_date ? new Date(task.work_orders.due_date).toLocaleDateString() : 'N/A'}
+                  </p>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
-                  {getStatusLabel(task.status)}
+                <span className={`px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                  task.work_orders?.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                  task.work_orders?.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                  task.work_orders?.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {task.work_orders?.priority || 'Normal'}
                 </span>
               </div>
 
-              {/* Asset Info */}
-              <div className="mb-3">
-                <h3 className="font-semibold text-gray-900 mb-1">
-                  {task.asset.tag_number}
-                </h3>
-                <div className="flex items-center gap-3 text-sm text-gray-500">
-                  <span>📍 {task.asset.location_code}</span>
-                  {task.asset.stations?.code && (
-                    <span>🏭 {task.asset.stations.code}</span>
+              {/* Divider */}
+              <div className="h-px bg-gray-100 my-2" />
+
+              {/* Bottom Row: Asset Info */}
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-3 text-gray-600">
+                  {task.assets?.tag_number && (
+                    <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="font-mono text-xs font-medium">{task.assets.tag_number}</span>
+                    </div>
+                  )}
+                  {task.assets?.location_code && (
+                    <span className="text-xs text-gray-500 truncate max-w-[120px]">
+                      {task.assets.location_code}
+                    </span>
                   )}
                 </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
               </div>
-
-              {/* Due Date */}
-              <div className="flex items-center gap-2 text-sm mb-3">
-                <span className="text-gray-400">📅</span>
-                <span className={
-                  new Date(task.work_order.due_date) < new Date() 
-                    ? 'text-red-600 font-medium' 
-                    : 'text-gray-600'
-                }>
-                  {format(new Date(task.work_order.due_date), 'dd MMMM yyyy', { locale: arEG })}
-                </span>
-                {new Date(task.work_order.due_date) < new Date() && task.status === 'pending' && (
-                  <span className="text-red-500 text-xs font-medium">متأخر</span>
-                )}
-              </div>
-
-              {/* Notes */}
-              {task.notes && (
-                <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3 line-clamp-2">
-                  {task.notes}
-                </p>
-              )}
-
-              {/* Action Button */}
-              <button
-                onClick={() => {
-                  // Navigate to task details or start work
-                  console.log('Start task:', task.id);
-                }}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 active:bg-blue-800 transition"
-              >
-                {task.status === 'pending' ? 'بدء المهمة' : 'عرض التفاصيل'}
-              </button>
-            </article>
+            </Link>
           ))
         )}
       </main>
-
-      {/* Refresh Button (Floating) */}
-      <button
-        onClick={fetchTasks}
-        className="fixed bottom-6 left-6 bg-white p-3 rounded-full shadow-lg border border-gray-200 hover:shadow-xl transition active:scale-95"
-        aria-label="تحديث"
-      >
-        <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      </button>
     </div>
   );
 }
