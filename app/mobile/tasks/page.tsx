@@ -52,6 +52,10 @@ export default function MobileTasksPage() {
     async function fetchTasks() {
       try {
         setLoading(true);
+        setError(null);
+        
+        // ✅ Dynamic date: today in YYYY-MM-DD format
+        const today = new Date().toISOString().split('T')[0];
         
         const { data, error } = await supabase
           .from('work_order_items')
@@ -82,14 +86,31 @@ export default function MobileTasksPage() {
             )
           `)
           .eq('status', 'pending')
-          .lte('work_order.due_date', '2026-05-31')
-          .order('due_date', { foreignTable: 'work_order', ascending: true });
+          // ✅ Dynamic filter: tasks due today or earlier
+          .lte('work_order.due_date', today)
+          // ✅ Order by due_date ascending (soonest first)
+          .order('due_date', { 
+            foreignTable: 'work_order', 
+            ascending: true,
+            nullsFirst: false 
+          });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase query error:', error);
+          throw error;
+        }
+        
+        console.log('✅ Tasks fetched:', data?.length || 0);
         setTasks(data || []);
+        
       } catch (err: any) {
-        console.error('❌ Error fetching tasks:', err);
-        setError(err.message || 'Failed to load tasks. Please check your connection.');
+        console.error('❌ Error fetching tasks:', {
+          message: err?.message,
+          details: err?.details,
+          hint: err?.hint,
+          code: err?.code
+        });
+        setError(err?.message || 'Failed to load tasks. Please check your connection.');
       } finally {
         setLoading(false);
       }
@@ -115,9 +136,12 @@ export default function MobileTasksPage() {
         <div className="bg-white border border-red-200 rounded-xl shadow-sm p-6 max-w-sm w-full text-center">
           <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
           <h2 className="text-lg font-semibold text-gray-900 mb-1">Something went wrong</h2>
-          <p className="text-gray-500 text-sm mb-4">{error}</p>
+          <p className="text-gray-500 text-sm mb-4 break-all">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              setError(null);
+              window.location.reload();
+            }}
             className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition"
           >
             Retry

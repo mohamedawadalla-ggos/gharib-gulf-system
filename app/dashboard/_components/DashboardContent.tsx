@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useUserRole } from '@/lib/useUserRole';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link';
 import {
   Package, AlertTriangle, Clock, CheckCircle, Wrench,
@@ -13,7 +13,10 @@ import {
 import DashboardCharts from '@/components/DashboardCharts';
 
 // Create supabase client instance
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
 
 // Type definitions
 interface ValveDetails {
