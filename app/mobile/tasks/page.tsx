@@ -44,29 +44,36 @@ export default function MobileTasksPage() {
         // ✅ CORRECTED SUPABASE QUERY
         // The previous error `PGRST100` occurred because of incorrect foreign table ordering syntax.
         // Use `.order('column', { foreignTable: 'table_name', ascending: true })` instead of dot notation.
-        const { data, error: queryError } = await supabase
-          .from('work_order_items')
-          .select(`
-            id,
-            status,
-            notes,
-            created_at,
-            work_orders!inner (
-              id,
-              title,
-              due_date,
-              priority
-            ),
-            assets!inner (
-              id,
-              tag_number,
-              location_code
-            )
-          `)
-          .eq('status', 'pending')
-          .order('due_date', { foreignTable: 'work_orders', ascending: true }) // ✅ FIXED ORDERING
-          .limit(50);
-
+      const { data, error } = await supabase
+  .from('work_order_items')
+  .select(`
+    id,
+    status,
+    notes,
+    asset_id,
+    work_order_id,
+    completed_at,
+    created_at,
+    asset:assets_clean!inner(
+      id,
+      tag_number,
+      location_code,
+      maintenance_status,
+      criticality,
+      condition,
+      stations(code)
+    ),
+    work_order:work_orders!inner(
+      id,
+      priority,
+      due_date,
+      assigned_crew,
+      status
+    )
+  `)
+  .eq('status', 'pending')
+  .lte('work_order.due_date', '2026-05-31')
+  .order('work_order(due_date)', { ascending: true });
         if (queryError) throw queryError;
         setTasks(data || []);
       } catch (err: any) {
