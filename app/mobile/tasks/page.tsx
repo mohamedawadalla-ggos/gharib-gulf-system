@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client'; // Adjust path if your client is elsewhere
+import { createClient } from '@/lib/supabase/client';
 import { Loader2, AlertCircle, Calendar, MapPin, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -11,84 +11,89 @@ interface WorkOrder {
   title: string;
   due_date: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  assigned_crew: string | null;
+  status: string;
 }
 
 interface Asset {
   id: string;
   tag_number: string;
   location_code: string | null;
+  maintenance_status: string | null;
+  criticality: string | null;
+  condition: string | null;
+  stations: { code: string } | null;
 }
 
 interface Task {
   id: string;
   status: string;
   notes: string | null;
+  asset_id: string;
+  work_order_id: string;
+  completed_at: string | null;
   created_at: string;
-  work_orders: WorkOrder | null;
-  assets: Asset | null;
+  asset: Asset | null;
+  work_order: WorkOrder | null;
 }
 
 export default function MobileTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Initialize Supabase client
-  const supabase = createClient();
 
   useEffect(() => {
     async function fetchTasks() {
       try {
         setLoading(true);
-        
-        // ✅ CORRECTED SUPABASE QUERY
-        // The previous error `PGRST100` occurred because of incorrect foreign table ordering syntax.
-        // Use `.order('column', { foreignTable: 'table_name', ascending: true })` instead of dot notation.
-      const { data, error } = await supabase
-  .from('work_order_items')
-  .select(`
-    id,
-    status,
-    notes,
-    asset_id,
-    work_order_id,
-    completed_at,
-    created_at,
-    asset:assets_clean!inner(
-      id,
-      tag_number,
-      location_code,
-      maintenance_status,
-      criticality,
-      condition,
-      stations(code)
-    ),
-    work_order:work_orders!inner(
-      id,
-      priority,
-      due_date,
-      assigned_crew,
-      status
-    )
-  `)
-  .eq('status', 'pending')
-  .lte('work_order.due_date', '2026-05-31')
-  .order('due_date', { 
-  foreignTable: 'work_order', 
-  ascending: true 
-})
+        const supabase = createClient();
+
+        // ✅ FIXED: Proper Supabase query syntax for foreign table filtering & ordering
+        const { data, error } = await supabase
+          .from('work_order_items')
+          .select(`
+            id,
+            status,
+            notes,
+            asset_id,
+            work_order_id,
+            completed_at,
+            created_at,
+            asset:assets_clean!inner (
+              id,
+              tag_number,
+              location_code,
+              maintenance_status,
+              criticality,
+              condition,
+              stations (code)
+            ),
+            work_order:work_orders!inner (
+              id,
+              title,
+              priority,
+              due_date,
+              assigned_crew,
+              status
+            )
+          `)
+          .eq('status', 'pending')
+          .filter('work_order.due_date', 'lte', '2026-05-31') // ✅ Fixed: use .filter() for foreign table
+          .order('due_date', { foreignTable: 'work_order', ascending: true }) // ✅ Fixed: proper foreign table ordering
+          .limit(50); // Optional: prevent overload
+
         if (error) throw error;
         setTasks(data || []);
       } catch (err: any) {
-        console.error(' Error fetching tasks:', err);
-        setError(err.message || 'Failed to load tasks. Please check your connection.');
+        console.error('❌ Error fetching tasks:', err);
+        setError(err?.message || 'Failed to load tasks. Please check your connection.');
       } finally {
         setLoading(false);
       }
     }
 
     fetchTasks();
-  }, [supabase]);
+  }, []); // ✅ Removed supabase from deps to avoid re-fetch on client re-init
 
   // --- Loading State ---
   if (loading) {
@@ -154,20 +159,20 @@ export default function MobileTasksPage() {
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1 pr-2">
                   <h3 className="font-semibold text-gray-900 line-clamp-1">
-                    {task.work_orders?.title || 'Untitled Task'}
+                    {task.work_order?.title || 'Untitled Task'}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    Due: {task.work_orders?.due_date ? new Date(task.work_orders.due_date).toLocaleDateString() : 'N/A'}
+                    Due: {task.work_order?.due_date ? new Date(task.work_order.due_date).toLocaleDateString() : 'N/A'}
                   </p>
                 </div>
                 <span className={`px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
-                  task.work_orders?.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                  task.work_orders?.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                  task.work_orders?.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                  task.work_order?.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                  task.work_order?.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                  task.work_order?.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
                   'bg-blue-100 text-blue-700'
                 }`}>
-                  {task.work_orders?.priority || 'Normal'}
+                  {task.work_order?.priority || 'Normal'}
                 </span>
               </div>
 
@@ -177,15 +182,15 @@ export default function MobileTasksPage() {
               {/* Bottom Row: Asset Info */}
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-3 text-gray-600">
-                  {task.assets?.tag_number && (
+                  {task.asset?.tag_number && (
                     <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
                       <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="font-mono text-xs font-medium">{task.assets.tag_number}</span>
+                      <span className="font-mono text-xs font-medium">{task.asset.tag_number}</span>
                     </div>
                   )}
-                  {task.assets?.location_code && (
+                  {task.asset?.location_code && (
                     <span className="text-xs text-gray-500 truncate max-w-[120px]">
-                      {task.assets.location_code}
+                      {task.asset.location_code}
                     </span>
                   )}
                 </div>
