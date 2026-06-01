@@ -101,7 +101,7 @@ export default function MobileTasksPage() {
         }
         
         console.log('✅ Tasks fetched:', data?.length || 0);
-        setTasks((data as Task[]) || []);
+        setTasks((data as unknown as Task[]) || []);
         
       } catch (err: any) {
         console.error('❌ Error fetching tasks:', {
