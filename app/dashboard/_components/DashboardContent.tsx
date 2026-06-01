@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import DashboardCharts from '@/components/DashboardCharts';
 
-const supabase = createSupabaseBrowserClient();
+const supabase = createClient();
 
 export default function DashboardPage() {
   const { role, companyCode, isClient, loading: roleLoading } = useUserRole();
