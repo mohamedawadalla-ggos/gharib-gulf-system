@@ -1,263 +1,144 @@
-// app/mobile/tasks/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { 
-  Camera, MapPin, CheckCircle, AlertCircle, Clock,
-  ArrowLeft, Upload, X, Loader2
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import { format } from 'date-fns';
+import { arEG } from 'date-fns/locale';
 
-const supabase = createSupabaseBrowserClient();
-
-interface TaskAsset {
+interface Asset {
   id: string;
   tag_number: string;
-  location_code: string | null;
-  station_code: string | null;
+  location_code: string;
   maintenance_status: string;
-  criticality: string;
   condition: string;
+  stations?: {
+    code: string;
+  };
 }
 
-interface Task {
+interface WorkOrder {
   id: string;
-  asset_id: string;
-  work_order_id: string | null;
-  assigned_to: string | null;
-  status: string;
-  due_date: string | null;
-  priority: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  due_date: string;
+  assigned_crew: string | null;
+  statusaswo_status: string;
+}
+
+interface WorkOrderItem {
+  id: string;
+  status: 'pending' | 'in_progress' | 'completed';
   notes: string | null;
-  asset: TaskAsset;
+  asset_id: string;
+  work_order_id: string;
+  completed_at: string | null;
+  created_at: string;
+  asset: Asset;
+  work_order: WorkOrder;
 }
 
 export default function MobileTasksPage() {
-  const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<WorkOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [completing, setCompleting] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [taskNotes, setTaskNotes] = useState('');
-  const [completionStatus, setCompletionStatus] = useState('completed');
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all');
 
-  useEffect(() => {
-    fetchTasks();
-    requestLocation();
-  }, []);
+  const supabase = createClient();
 
-async function fetchTasks() {
-  setLoading(true);
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    console.log('🔍 Fetching mobile tasks for date:', today);
-    
-    const { data, error } = await supabase
-      .from('work_order_items')
-      .select(`
-        id,
-        status,
-        notes,
-        asset_id,
-        work_order_id,
-        completed_at,
-        created_at,
-        asset:assets_clean!inner (
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: queryError } = await supabase
+        .from('work_order_items')
+        .select(`
           id,
-          tag_number,
-          location_code,
-          maintenance_status,
-          criticality,
-          condition,
-          stations (code)
-        ),
-        work_order:work_orders!inner (
-          id,
-          priority,
-          due_date,
-          assigned_crew,
-          status:wo_status
-        )
-      `)
-      .eq('status', 'pending')
-      .lte('work_order.due_date', today);
+          status,
+          notes,
+          asset_id,
+          work_order_id,
+          completed_at,
+          created_at,
+          asset:assets_clean!inner (
+            id,
+            tag_number,
+            location_code,
+            maintenance_status,
+            condition,
+            stations (
+              code
+            )
+          ),
+          work_order:work_orders!inner (
+            id,
+            priority,
+            due_date,
+            assigned_crew,
+            statusaswo_status
+          )
+        `)
+        .eq('status', 'pending')
+        .lte('work_order.due_date', new Date().toISOString().split('T')[0]);
 
-    if (error) {
-      console.error('❌ Work order items error:', error);
-      throw error;
-    }
+      if (queryError) throw queryError;
 
-    // ... rest of your function
+      // Client-side sorting by due_date since Supabase order doesn't support nested table ordering directly
+      const sortedData = data?.sort((a, b) => {
+        return new Date(a.work_order.due_date).getTime() - 
+               new Date(b.work_order.due_date).getTime();
+      }) || [];
 
-      console.log('✅ Fetched work order items:', itemsData?.length || 0);
-
-      // Format the data
-      const formattedTasks: Task[] = (itemsData || []).map((item: any) => ({
-        id: item.id,
-        asset_id: item.asset_id,
-        work_order_id: item.work_order_id,
-        assigned_to: item.work_order?.assigned_crew,
-        status: item.status,
-        due_date: item.work_order?.due_date,
-        priority: item.work_order?.priority,
-        notes: item.notes,
-        asset: {
-          id: item.asset?.id,
-          tag_number: item.asset?.tag_number,
-          location_code: item.asset?.location_code,
-          station_code: item.asset?.stations?.code,
-          maintenance_status: item.asset?.maintenance_status,
-          criticality: item.asset?.criticality,
-          condition: item.asset?.condition
-        }
-      }));
-
-      // ✅ Client-side sorting by due_date (ascending) then priority
-      const sortedTasks = formattedTasks.sort((a, b) => {
-        // Sort by due_date first (nulls last)
-        if (!a.due_date && !b.due_date) return 0;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        
-        const dateCompare = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-        if (dateCompare !== 0) return dateCompare;
-        
-        // Then by priority (urgent > high > medium > low)
-        const priorityOrder: Record<string, number> = { urgent: 1, high: 2, medium: 3, low: 4 };
-        return (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99);
-      });
-
-      console.log('📋 Formatted & sorted tasks:', sortedTasks.length);
-      setTasks(sortedTasks);
-      
+      setTasks(sortedData);
     } catch (err: any) {
       console.error('🚨 Error fetching tasks:', err);
-      setError(err.message || 'Failed to load tasks. Please refresh.');
+      setError(err.message || 'فشل في تحميل المهام');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function requestLocation() {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setGpsLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (err) => {
-          console.warn('Location access denied:', err);
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }
-  }
+  useEffect(() => {
+    fetchTasks();
+  }, []);
 
-  function handlePhotoCapture(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) {
-      setPhotoFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => setPhotoPreview(e.target?.result as string);
-      reader.readAsDataURL(file);
-    }
-  }
-
-  async function completeTask(taskId: string) {
-    if (!selectedTask) return;
-    
-    setCompleting(taskId);
-    setError(null);
-
-    try {
-      // 1. Upload photo if exists
-      let photoUrl: string | null = null;
-      if (photoFile) {
-        const fileExt = photoFile.name.split('.').pop();
-        const fileName = `${selectedTask.asset_id}/${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('valve-photos')
-          .upload(fileName, photoFile, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('valve-photos')
-          .getPublicUrl(fileName);
-        
-        photoUrl = publicUrl;
-      }
-
-      // 2. Save maintenance photo record
-      if (photoUrl) {
-        await supabase.from('maintenance_photos').insert({
-          asset_id: selectedTask.asset_id,
-          url: photoUrl,
-          photo_type: completionStatus === 'completed' ? 'after' : 'issue',
-          caption: taskNotes || `Task ${completionStatus}`,
-          captured_at: new Date().toISOString(),
-          gps_coordinates: gpsLocation ? `${gpsLocation.lat}, ${gpsLocation.lng}` : null
-        });
-      }
-
-      // 3. Update work order item status
-      const { error: updateError } = await supabase
-        .from('work_order_items')
-        .update({
-          status: completionStatus,
-          notes: taskNotes,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', taskId);
-
-      if (updateError) throw updateError;
-
-      // ✅ Show confirmation alert
-      alert(`✅ Task completed successfully!\nAsset: ${selectedTask.asset.tag_number}\nStatus: ${completionStatus}`);
-
-      // 4. Refresh tasks list
-      await fetchTasks();
-      resetForm();
-
-    } catch (err: any) {
-      console.error('Error completing task:', err);
-      setError(err.message || 'Failed to complete task');
-    } finally {
-      setCompleting(null);
-    }
-  }
-
-  function resetForm() {
-    setSelectedTask(null);
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setTaskNotes('');
-    setCompletionStatus('completed');
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed': return { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Done' };
-      case 'in_progress': return { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Active' };
-      default: return { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Pending' };
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'bg-red-500';
+      case 'high': return 'bg-orange-500';
+      case 'medium': return 'bg-yellow-500';
+      case 'low': return 'bg-green-500';
+      default: return 'bg-gray-500';
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      pending: 'قيد الانتظار',
+      in_progress: 'جاري التنفيذ',
+      completed: 'مكتمل'
+    };
+    return labels[status] || status;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'text-yellow-600 bg-yellow-50';
+      case 'in_progress': return 'text-blue-600 bg-blue-50';
+      case 'completed': return 'text-green-600 bg-green-50';
+      default: return 'text-gray-600 bg-gray-50';
+    }
+  };
+
+  const filteredTasks = tasks.filter(task => 
+    filter === 'all' ? true : task.status === filter
+  );
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
-          <p className="text-navy-300">Loading your tasks...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">جاري تحميل المهام...</p>
         </div>
       </div>
     );
@@ -265,202 +146,138 @@ async function fetchTasks() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-navy-950 p-4">
-        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4 text-center">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-red-300">{error}</p>
-          <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-amber-500 text-navy-950 rounded-lg">
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Task Detail Modal
-  if (selectedTask) {
-    return (
-      <div className="min-h-screen bg-navy-950 p-4">
-        <div className="max-w-lg mx-auto">
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={resetForm} className="p-2 hover:bg-navy-800 rounded-lg">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-amber-400">{selectedTask.asset.tag_number}</h1>
-              <p className="text-sm text-navy-300">{selectedTask.asset.station_code || 'Unknown Station'}</p>
-            </div>
-          </div>
-
-          {/* Asset Info */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 mb-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-navy-400">Location</p>
-                <p className="text-navy-100 font-medium">{selectedTask.asset.location_code || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-navy-400">Condition</p>
-                <p className={`font-medium ${selectedTask.asset.condition === 'good' ? 'text-green-400' : 'text-red-400'}`}>
-                  {selectedTask.asset.condition}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Photo Upload */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 mb-4">
-            <label className="block text-sm text-navy-300 mb-2 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-amber-400" />
-              Upload Photo (Required)
-            </label>
-            
-            {photoPreview ? (
-              <div className="relative">
-                <img src={photoPreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
-                <button
-                  type="button"
-                  onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
-                  className="absolute top-2 right-2 p-1 bg-red-500 rounded-full"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-navy-600 rounded-lg cursor-pointer hover:border-amber-500 transition">
-                <Upload className="w-6 h-6 text-navy-400 mb-2" />
-                <span className="text-sm text-navy-300">Tap to take photo</span>
-                <input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
-              </label>
-            )}
-          </div>
-
-          {/* Notes */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 mb-4">
-            <label className="block text-sm text-navy-300 mb-2">Notes</label>
-            <textarea
-              value={taskNotes}
-              onChange={(e) => setTaskNotes(e.target.value)}
-              placeholder="Add notes about this maintenance..."
-              className="w-full p-3 bg-navy-800 border border-navy-600 rounded-lg text-sm text-navy-100 placeholder-navy-500 font-medium focus:outline-none focus:border-amber-500 min-h-[100px]"
-            />
-          </div>
-
-          {/* Completion Status */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 mb-4">
-            <label className="block text-sm text-navy-300 mb-2">Task Result</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setCompletionStatus('completed')}
-                className={`p-3 rounded-lg border transition ${
-                  completionStatus === 'completed'
-                    ? 'bg-green-500/20 border-green-500 text-green-400'
-                    : 'bg-navy-800 border-navy-600 text-navy-300 hover:bg-navy-700'
-                }`}
-              >
-                <CheckCircle className="w-5 h-5 mx-auto mb-1" />
-                <span className="text-sm font-medium">Completed</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCompletionStatus('issue_found')}
-                className={`p-3 rounded-lg border transition ${
-                  completionStatus === 'issue_found'
-                    ? 'bg-red-500/20 border-red-500 text-red-400'
-                    : 'bg-navy-800 border-navy-600 text-navy-300 hover:bg-navy-700'
-                }`}
-              >
-                <AlertCircle className="w-5 h-5 mx-auto mb-1" />
-                <span className="text-sm font-medium">Issue Found</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Submit Button */}
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full text-center">
+          <p className="text-red-600 font-medium mb-2">خطأ في التحميل</p>
+          <p className="text-red-500 text-sm mb-4">{error}</p>
           <button
-            onClick={() => completeTask(selectedTask.id)}
-            disabled={completing === selectedTask.id || !photoFile}
-            className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-navy-950 rounded-lg font-bold transition flex items-center justify-center gap-2"
+            onClick={fetchTasks}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
           >
-            {completing === selectedTask.id ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" /> Completing...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-5 h-5" /> Complete Task
-              </>
-            )}
+            إعادة المحاولة
           </button>
-
-          {error && <p className="text-red-400 text-sm mt-3 text-center">{error}</p>}
         </div>
       </div>
     );
   }
 
-  // Tasks List View
   return (
-    <div className="min-h-screen bg-navy-950 p-4">
-      <div className="max-w-lg mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold text-amber-400">Today's Tasks</h1>
-          <button onClick={fetchTasks} className="p-2 hover:bg-navy-800 rounded-lg">
-            <Clock className="w-5 h-5" />
-          </button>
+    <div className="min-h-screen bg-gray-50 pb-24" dir="rtl">
+      {/* Header */}
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="px-4 py-4">
+          <h1 className="text-xl font-bold text-gray-900">المهام الميدانية</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {filteredTasks.length} مهمة {filter !== 'all' && `(${getStatusLabel(filter)})`}
+          </p>
         </div>
-
-        {/* Tasks List */}
-        {tasks.length === 0 ? (
-          <div className="text-center py-12">
-            <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
-            <p className="text-navy-300">All tasks completed! 🎉</p>
-            <button onClick={() => router.push('/dashboard')} className="mt-4 px-4 py-2 bg-amber-500 text-navy-950 rounded-lg">
-              Back to Dashboard
+        
+        {/* Filter Tabs */}
+        <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
+          {(['all', 'pending', 'in_progress', 'completed'] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
+                filter === f
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f === 'all' ? 'الكل' : getStatusLabel(f)}
             </button>
+          ))}
+        </div>
+      </header>
+
+      {/* Tasks List */}
+      <main className="px-4 py-4 space-y-3">
+        {filteredTasks.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500">لا توجد مهام لعرضها</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {tasks.map((task) => {
-              const statusConfig = getStatusBadge(task.status);
-              return (
-                <button
-                  key={task.id}
-                  onClick={() => setSelectedTask(task)}
-                  className="w-full text-left bg-navy-900 hover:bg-navy-800 border border-navy-700 rounded-lg p-4 transition"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-amber-400 font-bold">{task.asset.tag_number}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${statusConfig.bg} ${statusConfig.text}`}>
-                          {statusConfig.label}
-                        </span>
-                      </div>
-                      <p className="text-sm text-navy-300">{task.asset.station_code || 'Unknown Station'}</p>
-                      {task.asset.location_code && (
-                        <p className="text-xs text-navy-400 mt-1 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" /> {task.asset.location_code}
-                        </p>
-                      )}
-                    </div>
-                    <div className={`text-xs px-2 py-1 rounded font-bold ${
-                      task.priority === 'urgent' ? 'bg-red-500/20 text-red-400' :
-                      task.priority === 'high' ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-navy-700 text-navy-300'
-                    }`}>
-                      {task.priority?.toUpperCase()}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          filteredTasks.map((task) => (
+            <article
+              key={task.id}
+              className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 active:scale-[0.99] transition-transform"
+            >
+              {/* Priority Indicator */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${getPriorityColor(task.work_order.priority)}`}></span>
+                  <span className="text-xs font-medium text-gray-500">
+                    {task.work_order.priority === 'critical' && 'حرج'}
+                    {task.work_order.priority === 'high' && 'عالي'}
+                    {task.work_order.priority === 'medium' && 'متوسط'}
+                    {task.work_order.priority === 'low' && 'منخفض'}
+                  </span>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
+                  {getStatusLabel(task.status)}
+                </span>
+              </div>
+
+              {/* Asset Info */}
+              <div className="mb-3">
+                <h3 className="font-semibold text-gray-900 mb-1">
+                  {task.asset.tag_number}
+                </h3>
+                <div className="flex items-center gap-3 text-sm text-gray-500">
+                  <span>📍 {task.asset.location_code}</span>
+                  {task.asset.stations?.code && (
+                    <span>🏭 {task.asset.stations.code}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Due Date */}
+              <div className="flex items-center gap-2 text-sm mb-3">
+                <span className="text-gray-400">📅</span>
+                <span className={
+                  new Date(task.work_order.due_date) < new Date() 
+                    ? 'text-red-600 font-medium' 
+                    : 'text-gray-600'
+                }>
+                  {format(new Date(task.work_order.due_date), 'dd MMMM yyyy', { locale: arEG })}
+                </span>
+                {new Date(task.work_order.due_date) < new Date() && task.status === 'pending' && (
+                  <span className="text-red-500 text-xs font-medium">متأخر</span>
+                )}
+              </div>
+
+              {/* Notes */}
+              {task.notes && (
+                <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3 line-clamp-2">
+                  {task.notes}
+                </p>
+              )}
+
+              {/* Action Button */}
+              <button
+                onClick={() => {
+                  // Navigate to task details or start work
+                  console.log('Start task:', task.id);
+                }}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 active:bg-blue-800 transition"
+              >
+                {task.status === 'pending' ? 'بدء المهمة' : 'عرض التفاصيل'}
+              </button>
+            </article>
+          ))
         )}
-      </div>
+      </main>
+
+      {/* Refresh Button (Floating) */}
+      <button
+        onClick={fetchTasks}
+        className="fixed bottom-6 left-6 bg-white p-3 rounded-full shadow-lg border border-gray-200 hover:shadow-xl transition active:scale-95"
+        aria-label="تحديث"
+      >
+        <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </button>
     </div>
   );
 }
